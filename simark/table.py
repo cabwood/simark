@@ -7,7 +7,23 @@ from .core import ElementParser, Element, Text, VerbatimParser, \
 
 
 class TableCaption(Element):
-    pass
+
+    def __init__(self, src, start_pos, end_pos, children, name=None, arguments=None, show_numbers=False):
+        super().__init__(src, start_pos, end_pos, children, name, arguments)
+        self.show_numbers = show_numbers
+
+    def setup(self, context):
+        self.numbers = context.table_numbers
+
+    def render_html(self, context):
+        html_out = self.render_children_html(context)
+        if self.show_numbers:
+            html_out = f'Table {html.escape(self.numbers)}. {html_out}'
+        html_out = html_out.strip()
+        if html_out:
+            tab = self.get_indent()
+            html_out = f'{tab}<caption>{html_out}</caption>\n'
+        return html_out
 
 
 class TableCaptionParser(ElementParser):
@@ -35,11 +51,19 @@ class TableRowGroupParser(ElementParser):
 
 class TableHead(Element):
 
+    def setup(self, context):
+        # Convert table head cells to <th> tags
+        for row in self.children:
+            for cell in row.children:
+                cell.is_header = True
+
     def render_html(self, context):
+        if not self.children:
+            return ''
         class_attr = self.get_class_attr(context)
         html_out = self.render_children_html(context)
-        return f'<thead{class_attr}>\n{html_out}</thead>\n'
-
+        tab = self.get_indent()
+        return f'{tab}<thead{class_attr}>\n{html_out}\n{tab}</thead>\n'
 
 class TableHeadParser(TableRowGroupParser):
 
@@ -52,7 +76,8 @@ class TableBody(Element):
     def render_html(self, context):
         class_attr = self.get_class_attr(context)
         html_out = self.render_children_html(context)
-        return f'<tbody{class_attr}>\n{html_out}</tbody>\n'
+        tab = self.get_indent()
+        return f'{tab}<tbody{class_attr}>\n{html_out}\n{tab}</tbody>\n'
 
 
 class TableBodyParser(TableRowGroupParser):
@@ -66,7 +91,8 @@ class TableFoot(Element):
     def render_html(self, context):
         class_attr = self.get_class_attr(context)
         html_out = self.render_children_html(context)
-        return f'<tfoot{class_attr}>\n{html_out}</tfoot>\n'
+        tab = self.get_indent()
+        return f'{tab}<tfoot{class_attr}>\n{html_out}\n{tab}</tfoot>\n'
 
 
 class TableFootParser(TableRowGroupParser):
@@ -110,9 +136,13 @@ class TableCell(Element):
     def render_html(self, context):
         class_attr = self.get_class_attr(context)
         align_attr = table_align_attrs.get(self.align_horz, table_align_attrs['m'])
+        save_compact = context.compact
+        context.compact = True
         html_out = self.render_children_html(context)
+        context.compact = save_compact
         tag = 'th' if self.is_header else 'td'
-        return f'<{tag}{class_attr}{align_attr}>{html_out}</{tag}>\n'
+        tab = self.get_indent()
+        return f'{tab}<{tag}{class_attr}{align_attr}>{html_out}</{tag}>\n'
 
 
 class TableCellParser(ElementParser):
@@ -142,7 +172,8 @@ class TableRow(Element):
     def render_html(self, context):
         class_attr = self.get_class_attr(context)
         html_out = self.render_children_html(context)
-        return f'<tr{class_attr}>\n{html_out}</tr>\n'
+        tab = self.get_indent()
+        return f'{tab}<tr{class_attr}>\n{html_out}\n{tab}</tr>\n'
 
 
 class TableRowParser(Parser):
@@ -193,21 +224,14 @@ class Table(Element):
                     cell.align_horz = alignments[index]
 
         class_attr = self.get_class_attr(context)
-        if self.show_caption and self.caption:
-            caption_html = self.caption.render_html(context)
-            if self.show_numbers:
-                caption_html = f'Table {html.escape(self.numbers)}. {caption_html}'
-            caption_html = caption_html.strip()
-            if caption_html:
-                caption_html = f'<caption>{caption_html}</caption>\n'
-        else:
-            caption_html = ''
+        caption_html = self.caption.render_html(context) if self.show_caption else ''
         set_alignment(self.body.children, self.align)
         set_alignment(self.foot.children, self.align)
         head_html = self.head.render_html(context) if self.head.children else ''
         body_html = self.body.render_html(context) if self.body.children else ''
         foot_html = self.foot.render_html(context) if self.foot.children else ''
-        return f'<table{class_attr}>\n{caption_html}{head_html}{body_html}{foot_html}</table>\n'
+        tab = self.get_indent()
+        return f'{tab}<table{class_attr}>\n{caption_html}{head_html}{body_html}{foot_html}{tab}</table>\n'
 
 
 class TableParser(ElementParser):
@@ -259,11 +283,8 @@ class TableParser(ElementParser):
         if (not foot_rows) and extra['auto_foot'] and (len(body_rows) > 1):
             foot_rows.append(body_rows[-1])
             del body_rows[-1]
-        # Convert table head cells to <th> tags
-        for row in head_rows:
-            for cell in row.children:
-                cell.is_header = True
-        caption = TableCaption(context.src, context.pos, context.pos, caption_parts) if caption_parts else None
+        caption = TableCaption(context.src, context.pos, context.pos, caption_parts, \
+                               show_numbers=extra['show_numbers']) if caption_parts else None
         head = TableHead(context.src, context.pos, context.pos, head_rows) if head_rows else None
         body = TableBody(context.src, context.pos, context.pos, body_rows) if body_rows else None
         foot = TableFoot(context.src, context.pos, context.pos, foot_rows) if foot_rows else None

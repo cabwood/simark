@@ -50,7 +50,7 @@ document = DocumentParser().parse(parse_context)
 document.walk(lambda element, level: print(f"{' '*4*level}{element}"))
 
 render_context = RenderContext('html')
-html_out = f'<div class="simark">{document.render(render_context)}</div>'
+html_out = f'<div class="simark">\n{document.render(render_context)}\n</div>\n'
 
 style_out = """
 <style>
@@ -87,6 +87,7 @@ style_out = """
         text-align: center;
     }
 </style>
+
 """
 
 with open('test_out.html', 'w') as f:

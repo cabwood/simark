@@ -203,9 +203,10 @@ class Section(Element):
         context.end_section()
 
     def render_html(self, context):
+        tab = self.get_indent()
         html_out = self.render_children_html(context)
         class_attr = self.get_class_attr(context)
-        return f'<div{class_attr}>{html_out}</div>'
+        return f'{tab}<section{class_attr}>\n{html_out}\n{tab}</section>\n'
 
 
 class SectionParser(ElementParser):
@@ -255,7 +256,8 @@ class Heading(Element):
             html_classes.append('title')
         class_attr = self.get_class_attr(context, *html_classes)
         level = max(min(6, self.level), 1)
-        return f'<h{level}{class_attr}>{html_out}</h{level}>'
+        tab = self.get_indent()
+        return f'{tab}<h{level}{class_attr}>{html_out}</h{level}>\n'
 
 
 class HeadingParser(ElementParser):
@@ -304,7 +306,8 @@ class List(Element):
         start_attr = '' if self.start_num == 1 else f' start="{self.start_num}"'
         name_out = 'ol' if self.style in '1aAiI' else 'ul'
         html_out = self.render_children_html(context)
-        return f'<{name_out}{class_attr}{style_attr}{start_attr}>{html_out}</{name_out}>'
+        tab = self.get_indent()
+        return f'{tab}<{name_out}{class_attr}{style_attr}{start_attr}>\n{html_out}\n{tab}</{name_out}>'
 
 
 class ListParser(ElementParser):
@@ -339,9 +342,10 @@ class ListItem(Element):
         return f'{self.numbers} {text_out}'
 
     def render_html(self, context):
+        tab = self.get_indent()
         class_attr = self.get_class_attr(context)
         html_out = self.render_children_html(context)
-        return f'<li{class_attr}>{html_out}</li>'
+        return f'{tab}<li{class_attr}>\n{html_out}\n{tab}</li>\n'
 
 
 class ListItemParser(ElementParser):
@@ -441,7 +445,8 @@ class Code(Element):
     def render_html(self, context):
         class_attr = self.get_class_attr(context)
         html_out = self.render_children_html(context)
-        return f'<pre{class_attr}>{html_out}</pre>'
+        tab = self.get_indent()
+        return f'{tab}<pre{class_attr}>{html_out}</pre>'
 
 
 class CodeParser(ElementParser):
@@ -483,100 +488,6 @@ class CodeParser(ElementParser):
 #=============================================================================
 
 
-image_sizes = {
-    'auto': None,
-    'tiny': 60,
-    'small': 120,
-    'medium': 240,
-    'large': 480,
-    'huge': 960,
-}
-
-
-class Image(Element):
-
-    inline = True
-
-    def __init__(self, src, start_pos, end_pos, children, name=None, arguments=None, \
-                 url=None, size_mode=None, size_value=None, show_numbers=None, show_caption=None):
-        super().__init__(src, start_pos, end_pos, children, name, arguments)
-        self.url = url
-        self.size_mode = size_mode
-        self.size_value = size_value
-        self.show_numbers = show_numbers
-        self.show_caption = show_caption
-
-    def before_setup(self, context):
-        context.begin_figure()
-
-    def setup(self, context):
-        self.numbers = context.figure_numbers
-
-    def after_setup(self, context):
-        context.end_figure()
-
-    def render_html(self, context):
-        src_attr = f' src="{self.url}"'
-        if self.size_mode == 'name':
-            width = image_sizes[self.size_value]
-            width_style = f' style="width: {width}px;"' if width else ''
-        else:
-            if self.size_mode == 'abs':
-                width_style = f' style="width: {self.size_value}px;"'
-            else:
-                # Relative sizing
-                width_style = f' style="width: {self.size_value}vw;"'
-        caption_html = ''
-        if self.show_caption:
-            caption_html = self.render_children_html(context)
-            if self.show_numbers:
-                caption_html = f'Fig. {html.escape(self.numbers)}. {caption_html}'
-            caption_html = caption_html.strip()
-            if caption_html:
-                caption_html = f'<figcaption{width_style}>{caption_html}</figcaption>'
-        img_html = f'<img{src_attr}{width_style}>'
-        return f'<figure>{img_html}{caption_html}</figure>'
-
-
-class ImageParser(ElementParser):
-
-    names = ['image']
-    element_class = Image
-    re_size_name = re.compile(f'\s*({"|".join(image_sizes.keys())})\s*$')
-    re_size_abs = re.compile(r'\s*(\d+)\s*(?:px)?$')
-    re_size_rel = re.compile(r'\s*(\d+)\s*\%$')
-
-    def check_arguments(self, context, arguments, extra):
-        url = arguments.get('url', 0)
-        if not url:
-            raise NoMatch
-        extra['url'] = url
-        size = arguments.get('size', default='')
-        match = self.re_size_name.match(size)
-        if match:
-            extra['size_mode'] = 'name'
-            extra['size_value'] = match[1]
-        else:
-            match = self.re_size_abs.match(size)
-            if match:
-                extra['size_mode'] = 'abs'
-                extra['size_value'] = match[1]
-            else:
-                match = self.re_size_rel.match(size)
-                if match:
-                    extra['size_mode'] = 'rel'
-                    extra['size_value'] = match[1]
-                else:
-                    extra['size_mode'] = 'name'
-                    extra['size_value'] = 'auto'
-        extra['show_numbers'] = arguments.get_bool('numbers', default=True)
-        extra['show_caption'] = arguments.get_bool('caption', default=True)
-        return arguments
-
-
-#=============================================================================
-
-
 float_styles = {
     'l': "float: left;",
     'left': "float: left;",
@@ -587,9 +498,7 @@ float_styles = {
 
 class Float(Element):
 
-    inline = True
     paragraphs = True
-
 
     def __init__(self, src, start_pos, end_pos, children, name=None, arguments=None, align=None, clear=None):
         super().__init__(src, start_pos, end_pos, children, name, arguments)
@@ -597,10 +506,11 @@ class Float(Element):
         self.clear = clear
 
     def render_html(self, context):
+        tab = self.get_indent()
         content_html = self.render_children_html(context)
         float_style = float_styles[self.align]
         clear_style = ' clear: both;' if self.clear else ''
-        return f'<div style="{float_style}{clear_style}">{content_html}</div>'
+        return f'{tab}<div style="{float_style}{clear_style}">\n{content_html}\n{tab}</div>\n'
 
 
 class FloatParser(ElementParser):
@@ -644,7 +554,8 @@ class Block(Element):
         class_attr = self.get_class_attr(context)
         style_attr = f' style="{block_align_styles[self.align]}"' if self.align else ''
         html_out = self.render_children_html(context)
-        return f'<div{class_attr}{style_attr}>{html_out}</div>'
+        tab = self.get_indent()
+        return f'{tab}<div{class_attr}{style_attr}>\n{html_out}\n{tab}</div>\n'
 
 
 class BlockParser(ElementParser):

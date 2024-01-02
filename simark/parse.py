@@ -59,6 +59,7 @@ class Chunk:
         self.start_pos = start_pos
         self.end_pos = end_pos
         self.children = children
+        self.depth = 0
 
     @property
     def raw(self):

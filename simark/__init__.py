@@ -16,7 +16,7 @@ from .basic import \
     Increment, IncrementParser, \
     Entity, EntityParser, \
     Code, CodeParser, \
-    Image, ImageParser, \
     Block, BlockParser, \
     FloatParser
 from .table import Table, TableParser
+from .image import Image, ImageParser

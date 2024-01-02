@@ -111,6 +111,9 @@ class RenderContext:
             'figure': EnvVar(self.get_figure_numbers, None, self.inc_figure),
         }
         self.reset_counters()
+        self.chunk_parent = None
+        self.chunk_depth = 0
+        self.compact = False
 
     def reset_counters(self):
         self.reset_section()
@@ -272,13 +275,32 @@ class RenderMixin:
 
     html_class = None
 
+    def render(self, context):
+        context.reset_counters()
+        self._setup(context)
+        context.reset_counters()
+        return self._render(context)
+
     def _setup(self, context):
+        save_parent = context.chunk_parent
+        save_depth = context.chunk_depth
+        save_compact = context.compact
+        self.parent = save_parent
+        self.depth = save_depth
+        self.compact = save_compact
         self.before_setup(context)
-        if self.children:
-            for child in self.children:
-                child._setup(context)
-        self.setup(context)
-        self.after_setup(context)
+        try:
+            if self.children:
+                context.chunk_parent = self
+                context.chunk_depth += 1
+                for child in self.children:
+                    child._setup(context)
+            self.setup(context)
+            self.after_setup(context)
+        finally:
+            context.chunk_parent = save_parent
+            context.chunk_depth = save_depth
+            context.compact = save_compact
 
     def before_setup(self, context):
         pass
@@ -288,12 +310,6 @@ class RenderMixin:
 
     def after_setup(self, context):
         pass
-
-    def render(self, context):
-        context.reset_counters()
-        self._setup(context)
-        context.reset_counters()
-        return self._render(context)
 
     def _render(self, context):
         if context.format == 'plain':
@@ -317,6 +333,9 @@ class RenderMixin:
         if self.children:
             return ''.join([child.render_html(context) for child in self.children])
         return ''
+
+    def get_indent(self):
+        return ' ' * 2 * self.depth
 
     def get_class_attr(self, context, *classes):
         prefix = context.html_class_prefix or ""

@@ -76,7 +76,10 @@ class Paragraph(BaseElement):
         return f'\n\n{self.render_children_plain(context)}'
 
     def render_html(self, context):
-        return f'<p>{self.render_children_html(context)}</p>\n'
+        if context.compact:
+            return f'<p>{self.render_children_html(context).strip()}</p>'
+        tab = self.get_indent()
+        return f'{tab}<p>{self.render_children_html(context).strip()}</p>\n'
 
 
 class VerbatimParser(Parser):
@@ -265,22 +268,22 @@ class PartsParser(Parser):
     def concatenate_text(self, context, children):
         new_children = []
         start_pos = None
-        text = ''
+        texts = []
         for child in children:
             if isinstance(child, Text):
                 if start_pos is None:
                     start_pos = child.start_pos
-                    text = ''
-                text += child.text
+                    texts = []
+                texts.append(child.text.strip())
                 end_pos = child.end_pos
             else:
-                if text:
-                    new_children.append(Text(context.src, start_pos, end_pos, text))
+                if texts:
+                    new_children.append(Text(context.src, start_pos, end_pos, ' '.join(texts)))
                 start_pos = None
-                text = ''
+                texts = []
                 new_children.append(child)
-        if text:
-            new_children.append(Text(context.src, start_pos, end_pos, text))
+        if texts:
+            new_children.append(Text(context.src, start_pos, end_pos, ' '.join(texts)))
         return new_children
 
     def build_paragraphs(self, context, children):
