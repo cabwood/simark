@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 from simark import \
     DocumentParser, \
     ParseContext, \
@@ -40,7 +42,7 @@ parsers = [
     UnknownParser(),
 ]
 
-with open('test_sml.sml', 'r') as f:
+with open('test_in.sm', 'r') as f:
     s = f.read()
 
 parse_context = ParseContext(s, parsers=parsers)
@@ -48,38 +50,38 @@ document = DocumentParser().parse(parse_context)
 document.walk(lambda element, level: print(f"{' '*4*level}{element}"))
 
 render_context = RenderContext('html')
-html_out = f'<div class="sml">{document.render(render_context)}</div>'
+html_out = f'<div class="simark">{document.render(render_context)}</div>'
 
 style_out = """
 <style>
-    .sml {
+    .simark {
         font-family: Helvetica, sans-serif;
     }
-    .sml_title {
+    .simark_title {
         text-align: center;
     }
-    .sml table {
+    .simark table {
         caption-side: bottom;
         border-collapse: collapse;
         border: thin solid black;
         margin: 0.2em 0.4em 0.2em 0.4em;
     }
-    .sml tr {
+    .simark tr {
         border-top: thin solid black;
     }
-    .sml th, .sml td {
+    .simark th, .simark td {
         padding: 0.2em 0.4em 0.2em 0.4em;
     }
-    .sml table>caption, .sml figcaption {
+    .simark table>caption, .simark figcaption {
         margin-top: 0.4em;
         font-style: italic;
         font-size: 0.85rem;
     }
-    .sml figure {
+    .simark figure {
         display: inline-table;
         margin: 0.2em 0.4em 0.2em 0.4em;
     }
-    .sml figcaption {
+    .simark figcaption {
         display: table-caption;
         caption-side: bottom;
         text-align: center;
@@ -87,7 +89,7 @@ style_out = """
 </style>
 """
 
-with open('test_sml.html', 'w') as f:
+with open('test_out.html', 'w') as f:
     f.write(style_out + html_out)
 
 # print(html_out)
