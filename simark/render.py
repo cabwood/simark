@@ -101,8 +101,9 @@ class RenderContext:
     show_table_numbers = True
     show_figure_numbers = True
 
-    def __init__(self, format, html_class_prefix=HTML_CLASS_PREFIX):
+    def __init__(self, format, compact=False, html_class_prefix=HTML_CLASS_PREFIX):
         self.format = format
+        self.compact = compact
         self.html_class_prefix = html_class_prefix
         self.stack = []
         self.vars = {
@@ -112,7 +113,6 @@ class RenderContext:
             'figure': EnvVar(self.get_figure_numbers, None, self.inc_figure),
         }
         self.reset_counters()
-        self.compact = False
         self.chunk_parent = None
         self.chunk_depth = 0
 
@@ -308,24 +308,24 @@ class RenderMixin:
         self.compact = context.compact
         context.push()
         try:
-            self.before_setup(context)
+            self.before_child_setup(context)
             if self.children:
                 context.chunk_parent = self
                 context.chunk_depth += 1
                 for child in self.children:
                     child._setup(context)
+            self.after_child_setup(context)
             self.setup(context)
-            self.after_setup(context)
         finally:
             context.pop()
 
-    def before_setup(self, context):
+    def before_child_setup(self, context):
+        pass
+
+    def after_child_setup(self, context):
         pass
 
     def setup(self, context):
-        pass
-
-    def after_setup(self, context):
         pass
 
     def _render(self, context):
@@ -351,8 +351,10 @@ class RenderMixin:
             return ''.join([child.render_html(context) for child in self.children])
         return ''
 
-    def get_indent(self):
-        return ' ' * 2 * self.depth
+    def get_whitespace(self):
+        indent = '' if self.compact else ' ' * 2 * self.depth
+        newline = '' if self.compact else '\n'
+        return indent, newline 
 
     def get_class_attr(self, context, *classes):
         prefix = context.html_class_prefix or ""

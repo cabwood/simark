@@ -26,14 +26,14 @@ class Image(Element):
         self.show_caption = show_caption
         self.inline = inline
 
-    def before_setup(self, context):
+    def before_child_setup(self, context):
         context.begin_figure()
+
+    def after_child_setup(self, context):
+        context.end_figure()
 
     def setup(self, context):
         self.numbers = context.figure_numbers
-
-    def after_setup(self, context):
-        context.end_figure()
 
     def render_html(self, context):
         src_attr = f' src="{self.url}"'
@@ -55,8 +55,8 @@ class Image(Element):
             if caption_html:
                 caption_html = f'<figcaption{width_style}>{caption_html}</figcaption>'
         img_html = f'<img{src_attr}{width_style}>'
-        tab = self.get_indent()
-        return f'{tab}<figure>{img_html}{caption_html}</figure>\n'
+        indent, newline = self.get_whitespace()
+        return f'{indent}<figure>{img_html}{caption_html}</figure>{newline}'
 
 
 class ImageParser(ElementParser):

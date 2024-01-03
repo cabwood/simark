@@ -12,14 +12,6 @@ class Unknown(Element):
     Text object that would eat an element-opener, and upset element nesting.
     """
 
-    def render_plain(self, context):
-        if self.children:
-            open_out = self.src[self.start_pos:self.children[0].start_pos]
-            close_out = self.src[self.children[-1].end_pos:self.end_pos]
-            return f'{open_out}{self.render_children_plain(context)}{close_out}'
-        else:
-            return self.raw
-
     def render_html(self, context):
         if self.children:
             open_out = html.escape(self.src[self.start_pos:self.children[0].start_pos])
@@ -51,9 +43,6 @@ class Reference(Element):
 
     def setup(self, context):
         self.var_value = str(context.get_var(self.var_name))
-
-    def render_plain(self, context):
-        return self.var_value
 
     def render_html(self, context):
         html_out = html.escape(self.var_value)
@@ -95,9 +84,6 @@ class Define(Element):
                 value += child.render_plain(context)
         context.set_var(self.var_name, value)
 
-    def render_plain(self, context):
-        return ''
-
     def render_html(self, context):
         return ''
 
@@ -134,9 +120,6 @@ class Increment(Element):
 
     def setup(self, context):
         context.inc_var(self.var_name)
-
-    def render_plain(self, context):
-        return ''
 
     def render_html(self, context):
         return ''
@@ -196,17 +179,17 @@ class Section(Element):
         super().__init__(src, start_pos, end_pos, children, name, arguments)
         self.start_num = start_num
 
-    def before_setup(self, context):
+    def before_child_setup(self, context):
         context.begin_section(start_num=self.start_num)
 
-    def after_setup(self, context):
+    def after_child_setup(self, context):
         context.end_section()
 
     def render_html(self, context):
-        tab = self.get_indent()
         html_out = self.render_children_html(context)
         class_attr = self.get_class_attr(context)
-        return f'{tab}<section{class_attr}>\n{html_out}\n{tab}</section>\n'
+        indent, newline = self.get_whitespace()
+        return f'{indent}<section{class_attr}>{newline}{html_out}{newline}{indent}</section>{newline}'
 
 
 class SectionParser(ElementParser):
@@ -242,9 +225,6 @@ class Heading(Element):
             show_nums = context.show_heading_numbers
         self.numbers = context.section_numbers + '. ' if show_nums else ''
 
-    def render_plain(self, context):
-        return self.numbers + self.render_children_plain(context)
-
     def render_html(self, context):
         # Clamp level to between 1 and 6, corresponding to available HTML <h?> options
         html_out = html.escape(self.numbers) + self.render_children_html(context)
@@ -256,8 +236,8 @@ class Heading(Element):
             html_classes.append('title')
         class_attr = self.get_class_attr(context, *html_classes)
         level = max(min(6, self.level), 1)
-        tab = self.get_indent()
-        return f'{tab}<h{level}{class_attr}>{html_out}</h{level}>\n'
+        indent, newline = self.get_whitespace()
+        return f'{indent}<h{level}{class_attr}>{html_out}</h{level}>{newline}'
 
 
 class HeadingParser(ElementParser):
@@ -291,23 +271,20 @@ class List(Element):
         self.style = style
         self.start_num = start_num
 
-    def before_setup(self, context):
+    def before_child_setup(self, context):
         context.begin_list(self.style, start_num=self.start_num)
 
-    def after_setup(self, context):
+    def after_child_setup(self, context):
         context.end_list()
-
-    def render_plain(self, context):
-        return self.render_children_plain(context)
 
     def render_html(self, context):
         class_attr = self.get_class_attr(context)
         style_attr = f' style="{list_styles.get(self.style, list_styles["."])}"'
         start_attr = '' if self.start_num == 1 else f' start="{self.start_num}"'
-        name_out = 'ol' if self.style in '1aAiI' else 'ul'
+        tag = 'ol' if self.style in '1aAiI' else 'ul'
         html_out = self.render_children_html(context)
-        tab = self.get_indent()
-        return f'{tab}<{name_out}{class_attr}{style_attr}{start_attr}>\n{html_out}\n{tab}</{name_out}>'
+        indent, newline = self.get_whitespace()
+        return f'{indent}<{tag}{class_attr}{style_attr}{start_attr}>{newline}{html_out}{newline}{indent}</{tag}>{newline}'
 
 
 class ListParser(ElementParser):
@@ -331,21 +308,17 @@ class ListItem(Element):
 
     paragraphs = True
 
-    def before_setup(self, context):
+    def before_child_setup(self, context):
         context.inc_list()
 
     def setup(self, context):
         self.numbers = context.list_numbers
 
-    def render_plain(self, context):
-        text_out = self.render_children_plain(context)
-        return f'{self.numbers} {text_out}'
-
     def render_html(self, context):
-        tab = self.get_indent()
         class_attr = self.get_class_attr(context)
         html_out = self.render_children_html(context)
-        return f'{tab}<li{class_attr}>\n{html_out}\n{tab}</li>\n'
+        indent, newline = self.get_whitespace()
+        return f'{indent}<li{class_attr}>{newline}{html_out}{newline}{indent}</li>{newline}'
 
 
 class ListItemParser(ElementParser):
@@ -392,7 +365,8 @@ class LineBreak(Element):
     inline = True
 
     def render_html(self, context):
-        return '<br>'
+        indent, newline = self.get_whitespace()
+        return f'{indent}<br>{newline}'
 
 
 class LineBreakParser(ElementParser):
@@ -423,9 +397,6 @@ class Entity(Element):
 
     inline = True
 
-    def render_plain(self, context):
-        return plain_entities[self.name[1:]]
-
     def render_html(self, context):
         return html_entities[self.name[1:]]
 
@@ -445,8 +416,8 @@ class Code(Element):
     def render_html(self, context):
         class_attr = self.get_class_attr(context)
         html_out = self.render_children_html(context)
-        tab = self.get_indent()
-        return f'{tab}<pre{class_attr}>{html_out}</pre>'
+        indent, newline = self.get_whitespace()
+        return f'{indent}<pre{class_attr}>{html_out}</pre>{newline}'
 
 
 class CodeParser(ElementParser):
@@ -506,11 +477,11 @@ class Float(Element):
         self.clear = clear
 
     def render_html(self, context):
-        tab = self.get_indent()
         content_html = self.render_children_html(context)
         float_style = float_styles[self.align]
         clear_style = ' clear: both;' if self.clear else ''
-        return f'{tab}<div style="{float_style}{clear_style}">\n{content_html}\n{tab}</div>\n'
+        indent, newline = self.get_whitespace()
+        return f'{indent}<div style="{float_style}{clear_style}">{newline}{content_html}{newline}{indent}</div>{newline}'
 
 
 class FloatParser(ElementParser):
@@ -554,8 +525,8 @@ class Block(Element):
         class_attr = self.get_class_attr(context)
         style_attr = f' style="{block_align_styles[self.align]}"' if self.align else ''
         html_out = self.render_children_html(context)
-        tab = self.get_indent()
-        return f'{tab}<div{class_attr}{style_attr}>\n{html_out}\n{tab}</div>\n'
+        indent, newline = self.get_whitespace()
+        return f'{indent}<div{class_attr}{style_attr}>{newline}{html_out}{newline}{indent}</div>{newline}'
 
 
 class BlockParser(ElementParser):

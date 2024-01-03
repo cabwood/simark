@@ -21,8 +21,8 @@ class TableCaption(Element):
             html_out = f'Table {html.escape(self.numbers)}. {html_out}'
         html_out = html_out.strip()
         if html_out:
-            tab = self.get_indent()
-            html_out = f'{tab}<caption>{html_out}</caption>\n'
+            indent, newline = self.get_whitespace()
+            html_out = f'{indent}<caption>{html_out}</caption>{newline}'
         return html_out
 
 
@@ -62,8 +62,9 @@ class TableHead(Element):
             return ''
         class_attr = self.get_class_attr(context)
         html_out = self.render_children_html(context)
-        tab = self.get_indent()
-        return f'{tab}<thead{class_attr}>\n{html_out}\n{tab}</thead>\n'
+        indent, newline = self.get_whitespace()
+        return f'{indent}<thead{class_attr}>{newline}{html_out}{newline}{indent}</thead>{newline}'
+
 
 class TableHeadParser(TableRowGroupParser):
 
@@ -76,8 +77,8 @@ class TableBody(Element):
     def render_html(self, context):
         class_attr = self.get_class_attr(context)
         html_out = self.render_children_html(context)
-        tab = self.get_indent()
-        return f'{tab}<tbody{class_attr}>\n{html_out}\n{tab}</tbody>\n'
+        indent, newline = self.get_whitespace()
+        return f'{indent}<tbody{class_attr}>{newline}{html_out}{newline}{indent}</tbody>{newline}'
 
 
 class TableBodyParser(TableRowGroupParser):
@@ -91,8 +92,8 @@ class TableFoot(Element):
     def render_html(self, context):
         class_attr = self.get_class_attr(context)
         html_out = self.render_children_html(context)
-        tab = self.get_indent()
-        return f'{tab}<tfoot{class_attr}>\n{html_out}\n{tab}</tfoot>\n'
+        indent, newline = self.get_whitespace()
+        return f'{indent}<tfoot{class_attr}>{newline}{html_out}{newline}{indent}</tfoot>{newline}'
 
 
 class TableFootParser(TableRowGroupParser):
@@ -103,8 +104,8 @@ class TableFootParser(TableRowGroupParser):
 
 class TableTextParser(Parser):
     """
-    Like as TextParser, except bar "|" and newline also terminate the text,
-    and may be empty.
+    Like TextParser, except bar "|" and newline also terminate the text, and
+    may be empty.
     """
 
     parser = Regex(re.compile(rf"(\\\\|\\`|\\\||\\{esc_element_open}|\\{esc_element_close}|[^|\n`{esc_element_open}{esc_element_close}])*"))
@@ -133,16 +134,17 @@ class TableCell(Element):
     align_horz = 'm'
     is_header = False
 
+    def before_child_setup(self, context):
+        # Render children compact
+        context.compact = True
+
     def render_html(self, context):
         class_attr = self.get_class_attr(context)
         align_attr = table_align_attrs.get(self.align_horz, table_align_attrs['m'])
-        save_compact = context.compact
-        context.compact = True
         html_out = self.render_children_html(context)
-        context.compact = save_compact
         tag = 'th' if self.is_header else 'td'
-        tab = self.get_indent()
-        return f'{tab}<{tag}{class_attr}{align_attr}>{html_out}</{tag}>\n'
+        indent, newline = self.get_whitespace()
+        return f'{indent}<{tag}{class_attr}{align_attr}>{html_out}</{tag}>{newline}'
 
 
 class TableCellParser(ElementParser):
@@ -172,8 +174,8 @@ class TableRow(Element):
     def render_html(self, context):
         class_attr = self.get_class_attr(context)
         html_out = self.render_children_html(context)
-        tab = self.get_indent()
-        return f'{tab}<tr{class_attr}>\n{html_out}\n{tab}</tr>\n'
+        indent, newline = self.get_whitespace()
+        return f'{indent}<tr{class_attr}>{newline}{html_out}{newline}{indent}</tr>{newline}'
 
 
 class TableRowParser(Parser):
@@ -204,14 +206,14 @@ class Table(Element):
         self.auto_head = auto_head
         self.auto_foot = auto_foot
 
-    def before_setup(self, context):
+    def before_child_setup(self, context):
         context.begin_table()
+
+    def after_child_setup(self, context):
+        context.end_table()
 
     def setup(self, context):
         self.numbers = context.table_numbers
-
-    def after_setup(self, context):
-        context.end_table()
 
     def render_html(self, context):
 
@@ -230,8 +232,8 @@ class Table(Element):
         head_html = self.head.render_html(context) if self.head.children else ''
         body_html = self.body.render_html(context) if self.body.children else ''
         foot_html = self.foot.render_html(context) if self.foot.children else ''
-        tab = self.get_indent()
-        return f'{tab}<table{class_attr}>\n{caption_html}{head_html}{body_html}{foot_html}{tab}</table>\n'
+        indent, newline = self.get_whitespace()
+        return f'{indent}<table{class_attr}>{newline}{caption_html}{head_html}{body_html}{foot_html}{indent}</table>{newline}'
 
 
 class TableParser(ElementParser):

@@ -72,14 +72,9 @@ class TextParser(Parser):
 
 class Paragraph(BaseElement):
 
-    def render_plain(self, context):
-        return f'\n\n{self.render_children_plain(context)}'
-
     def render_html(self, context):
-        if context.compact:
-            return f'<p>{self.render_children_html(context).strip()}</p>'
-        tab = self.get_indent()
-        return f'{tab}<p>{self.render_children_html(context).strip()}</p>\n'
+        indent, newline = self.get_whitespace()
+        return f'{indent}<p>{self.render_children_html(context).strip()}</p>{newline}'
 
 
 class VerbatimParser(Parser):
