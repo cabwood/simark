@@ -1,21 +1,28 @@
 import re
 import html
 from .parse import Parser, Many, Any, Regex
-from .core import ElementParser, Element, Text, VerbatimParser, \
+from .core import ElementParser, Element, Text, VerbatimParser, Arguments, \
     unescape, esc_element_open, esc_element_close, \
     ESC_BACKSLASH, ESC_BACKTICK, ESC_ELEMENT_OPEN, ESC_ELEMENT_CLOSE
 
 
 class TableCaption(Element):
 
-    def __init__(self, src, start_pos, end_pos, children, name=None, arguments=None, show_numbers=False):
-        super().__init__(src, start_pos, end_pos, children, name, arguments)
-        self.show_numbers = show_numbers
+    def __init__(self, src, start_pos, end_pos, children, name=None, arguments=None, show_numbers=None, visible=None):
+        super().__init__(src, start_pos, end_pos, children, name=name, arguments=arguments)
+        self.show_numbers = True if show_numbers is None else show_numbers
+        self.visible = True if visible is None else visible
 
     def setup(self, context):
         self.numbers = context.table_numbers
 
+    def load_arguments(self, arguments):
+        # No arguments implemented yet
+        pass
+
     def render_html(self, context):
+        if not self.visible:
+            return ''
         html_out = self.render_children_html(context)
         if self.show_numbers:
             html_out = f'Table {html.escape(self.numbers)}. {html_out}'
@@ -30,6 +37,49 @@ class TableCaptionParser(ElementParser):
 
     names = ['caption']
     element_class = TableCaption
+
+    def check_arguments(self, context, arguments, extra):
+        extra['show_numbers'] = arguments.get_bool('numbers')
+        return arguments
+
+
+class TableSection(Element):
+    """
+    Functionality common to <thead>, <tbody> and <tfoot> elements
+    """
+
+    html_tag = None
+
+    def __init__(self, src, start_pos, end_pos, children, name=None, arguments=None, h_align=None, v_align=None):
+        super().__init__(src, start_pos, end_pos, children, name=name, arguments=arguments)
+        self.h_align = '' if h_align is None else h_align
+        self.v_align = '' if v_align is None else v_align
+
+    def before_child_setup(self, context):
+        pass
+
+    def set_child_alignment(self, h_align, v_align):
+        pass
+
+    def load_arguments(self, arguments):
+        """
+        Adopt relevant arguments from those provided, to permit overdiding
+        of inherited behaviour.
+        """
+        h_align = arguments.get('h_align')
+        if h_align is not None:
+            self.h_align = h_align
+        v_align = arguments.get('v_align')
+        if v_align is not None:
+            self.v_align = v_align
+
+    def render_html(self, context):
+        if not self.children:
+            return ''
+        class_attr = self.get_class_attr(context)
+        html_out = self.render_children_html(context)
+        indent, newline = self.get_whitespace()
+        return f'{indent}<{self.html_tag}{class_attr}>{newline}{html_out}{newline}{indent}</{self.html_tag}>{newline}'
 
 
 class TableRowGroupParser(ElementParser):
@@ -49,21 +99,14 @@ class TableRowGroupParser(ElementParser):
         return [child for child in children if isinstance(child, TableRow)]
 
 
-class TableHead(Element):
+class TableHead(TableSection):
+
+    html_tag = 'thead'
 
     def setup(self, context):
-        # Convert table head cells to <th> tags
         for row in self.children:
             for cell in row.children:
-                cell.is_header = True
-
-    def render_html(self, context):
-        if not self.children:
-            return ''
-        class_attr = self.get_class_attr(context)
-        html_out = self.render_children_html(context)
-        indent, newline = self.get_whitespace()
-        return f'{indent}<thead{class_attr}>{newline}{html_out}{newline}{indent}</thead>{newline}'
+                cell.html_tag = 'th'
 
 
 class TableHeadParser(TableRowGroupParser):
@@ -72,13 +115,9 @@ class TableHeadParser(TableRowGroupParser):
     element_class = TableHead
 
 
-class TableBody(Element):
+class TableBody(TableSection):
 
-    def render_html(self, context):
-        class_attr = self.get_class_attr(context)
-        html_out = self.render_children_html(context)
-        indent, newline = self.get_whitespace()
-        return f'{indent}<tbody{class_attr}>{newline}{html_out}{newline}{indent}</tbody>{newline}'
+    html_tag = 'tbody'
 
 
 class TableBodyParser(TableRowGroupParser):
@@ -87,13 +126,9 @@ class TableBodyParser(TableRowGroupParser):
     element_class = TableBody
 
 
-class TableFoot(Element):
+class TableFoot(TableSection):
 
-    def render_html(self, context):
-        class_attr = self.get_class_attr(context)
-        html_out = self.render_children_html(context)
-        indent, newline = self.get_whitespace()
-        return f'{indent}<tfoot{class_attr}>{newline}{html_out}{newline}{indent}</tfoot>{newline}'
+    html_tag = 'tfoot'
 
 
 class TableFootParser(TableRowGroupParser):
@@ -121,18 +156,30 @@ class TableTextParser(Parser):
         ))
 
 
-table_align_attrs = {
+table_h_align_attrs = {
     'l': ' align="left"',
     'm': ' align="middle"',
     'r': ' align="right"',
+}
+
+table_v_align_attrs = {
+    't': ' vertical-align="top"',
+    'm': ' vertical-align="middle"',
+    'b': ' vertical-align="bottom"',
 }
 
 class TableCell(Element):
 
     paragraphs = True
 
-    align_horz = 'm'
-    is_header = False
+    html_tag = 'td'
+    h_align = 'm'
+    v_align = 'm'
+
+    def __init__(self, src, start_pos, end_pos, children, name=None, arguments=None, h_align=None, v_align=None):
+        super().__init__(src, start_pos, end_pos, children, name=name, arguments=arguments)
+        self.h_align = 'm' if h_align is None else h_align
+        self.v_align = 'm' if v_align is None else v_align
 
     def before_child_setup(self, context):
         # Render children compact
@@ -140,11 +187,10 @@ class TableCell(Element):
 
     def render_html(self, context):
         class_attr = self.get_class_attr(context)
-        align_attr = table_align_attrs.get(self.align_horz, table_align_attrs['m'])
+        align_attr = table_h_align_attrs.get(self.h_align, table_h_align_attrs['m'])
         html_out = self.render_children_html(context)
-        tag = 'th' if self.is_header else 'td'
         indent, newline = self.get_whitespace()
-        return f'{indent}<{tag}{class_attr}{align_attr}>{html_out}</{tag}>{newline}'
+        return f'{indent}<{self.html_tag}{class_attr}{align_attr}>{html_out}</{self.html_tag}>{newline}'
 
 
 class TableCellParser(ElementParser):
@@ -167,6 +213,11 @@ class TableCellParser(ElementParser):
                 TableTextParser(),
             ),
         )
+
+    def check_arguments(self, context, arguments, extra):
+        extra['h_align'] = arguments.get('h_align')
+        extra['v_align'] = arguments.get('v_align')
+        return arguments
 
 
 class TableRow(Element):
@@ -193,47 +244,28 @@ class TableRowParser(Parser):
 class Table(Element):
 
     def __init__(self, src, start_pos, end_pos, children, name=None, arguments=None, \
-            caption=None, head=None, body=None, foot=None, align=None, show_caption=None, \
-            show_numbers=None, auto_head=None, auto_foot=None):
+            h_align=None, v_align=None, auto_head=None, auto_foot=None, show_caption=None, show_numbers=None):
         super().__init__(src, start_pos, end_pos, children, name, arguments)
-        self.caption = caption
-        self.head = head
-        self.body = body
-        self.foot = foot
-        self.align = align
-        self.show_numbers = show_numbers
-        self.show_caption = show_caption
-        self.auto_head = auto_head
-        self.auto_foot = auto_foot
+        self.h_align = h_align or ''
+        self.v_align = v_align or ''
+        self.auto_head = True if auto_head is None else auto_head
+        self.auto_foot = False if auto_foot is not None else auto_foot
+        self.show_caption = True if show_caption is None else show_caption
+        self.show_numbers = True if show_numbers is None else show_numbers
 
     def before_child_setup(self, context):
-        context.begin_table()
+        if self.show_caption and self.show_numbers:
+            context.begin_table()
 
     def after_child_setup(self, context):
-        context.end_table()
-
-    def setup(self, context):
-        self.numbers = context.table_numbers
+        if self.show_caption and self.show_numbers:
+            context.end_table()
 
     def render_html(self, context):
-
-        def set_alignment(rows, alignments):
-            count = len(alignments)
-            for row in rows:
-                for index, cell in enumerate(row.children):
-                    if index >= count:
-                        break
-                    cell.align_horz = alignments[index]
-
         class_attr = self.get_class_attr(context)
-        caption_html = self.caption.render_html(context) if self.show_caption else ''
-        set_alignment(self.body.children, self.align)
-        set_alignment(self.foot.children, self.align)
-        head_html = self.head.render_html(context) if self.head.children else ''
-        body_html = self.body.render_html(context) if self.body.children else ''
-        foot_html = self.foot.render_html(context) if self.foot.children else ''
+        html_out = self.render_children_html(context)
         indent, newline = self.get_whitespace()
-        return f'{indent}<table{class_attr}>{newline}{caption_html}{head_html}{body_html}{foot_html}{indent}</table>{newline}'
+        return f'{indent}<table{class_attr}>{newline}{html_out}{newline}{indent}</table>{newline}'
 
 
 class TableParser(ElementParser):
@@ -256,42 +288,63 @@ class TableParser(ElementParser):
         )
 
     def check_arguments(self, context, arguments, extra):
-        extra['align'] = arguments.get('align', 0)
-        extra['show_numbers'] = arguments.get_bool('numbers', default=True)
-        extra['show_caption'] = arguments.get_bool('caption', default=True)
-        extra['auto_head'] = arguments.get_bool('autohead', default=True)
-        extra['auto_foot'] = arguments.get_bool('autofoot', default=False)
+        extra['h_align'] = arguments.get('h_align')
+        extra['v_align'] = arguments.get('v_align')
+        extra['auto_head'] = arguments.get_bool('autohead')
+        extra['auto_foot'] = arguments.get_bool('autofoot')
+        extra['show_caption'] = arguments.get_bool('caption')
+        extra['show_numbers'] = arguments.get_bool('numbers')
         return arguments
 
     def check_children(self, context, children, extra):
-        caption_parts = []
-        head_rows = []
-        body_rows = []
-        foot_rows = []
+        # Every rendered table has <thead>, <tbody> and <tfoot> elements, and
+        # perhaps a <caption>, but these may be missing from the source.
+        # Using autohead and autofoot arguments also complicates parsing.
+        # It's easiest and safest to just create new caption, head, body and
+        # foot elements, and to populate them with arguments and rows found
+        # in the source, one by one.
+        h_align = extra['h_align']
+        v_align = extra['v_align']
+        show_caption = extra['show_caption']
+        show_numbers = extra['show_numbers']
+        caption = TableCaption(context.src, context.pos, context.pos, [], show_numbers=show_numbers, visible=show_caption)
+        head = TableHead(context.src, context.pos, context.pos, [], h_align=h_align, v_align=v_align)
+        body = TableBody(context.src, context.pos, context.pos, [], h_align=h_align, v_align=v_align)
+        foot = TableFoot(context.src, context.pos, context.pos, [], h_align=h_align, v_align=v_align)
+        # Iterate parsed children of the table, populating the appropriate
+        # caption, head, body or foot containers with elements and arguments
+        # that belong with them. Drop anything that doesn't belong at all.
         for child in children:
             if isinstance(child, TableRow):
-                body_rows.append(child)
-            elif isinstance(child, TableBody):
-                body_rows.extend(child.children)
+                # Orphaned row should be part of the body
+                body.children.append(child)
             elif isinstance(child, TableHead):
-                head_rows.extend(child.children)
+                # A table head section was defined. Move its children and any
+                # arguments into the new head element
+                head.load_arguments(child.arguments)
+                head.children.extend(child.children)
+            elif isinstance(child, TableBody):
+                # A table body section was defined. Move its children and any
+                # arguments into the new body element
+                body.load_arguments(child.arguments)
+                body.children.extend(child.children)
             elif isinstance(child, TableFoot):
-                foot_rows.extend(child.children)
+                # A table foot section was defined. Move its children and any
+                # arguments into the new foot element
+                foot.load_arguments(child.arguments)
+                foot.children.extend(child.children)
             elif isinstance(child, TableCaption):
-                caption_parts.extend(child.children)
-        if (not head_rows) and extra['auto_head'] and (len(body_rows) > 1):
-            head_rows.append(body_rows[0])
-            del body_rows[0]
-        if (not foot_rows) and extra['auto_foot'] and (len(body_rows) > 1):
-            foot_rows.append(body_rows[-1])
-            del body_rows[-1]
-        caption = TableCaption(context.src, context.pos, context.pos, caption_parts, \
-                               show_numbers=extra['show_numbers']) if caption_parts else None
-        head = TableHead(context.src, context.pos, context.pos, head_rows) if head_rows else None
-        body = TableBody(context.src, context.pos, context.pos, body_rows) if body_rows else None
-        foot = TableFoot(context.src, context.pos, context.pos, foot_rows) if foot_rows else None
-        extra.update({'caption': caption, 'head': head, 'body': body, 'foot': foot})
-        children = [child for child in [caption, head, body, foot] if child]
-        return children
+                # A table caption was defined. Move its children and any
+                # arguments into the new caption element
+                caption.load_arguments(child.arguments)
+                caption.children.extend(child.children)
+        if (not head.children) and extra['auto_head'] and (len(body.children) > 1):
+            head.children.append(body.children[0])
+            del body.children[0]
+        if (not foot.children) and extra['auto_foot'] and (len(body.children) > 1):
+            foot.children.append(body.children[-1])
+            del body.children[-1]
+        # Keep only non-empty elements
+        return [child for child in (caption, head, body, foot) if child.children]
 
 

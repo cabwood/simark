@@ -365,13 +365,12 @@ class LineBreak(Element):
     inline = True
 
     def render_html(self, context):
-        indent, newline = self.get_whitespace()
-        return f'{indent}<br>{newline}'
+        return f'<br>'
 
 
 class LineBreakParser(ElementParser):
 
-    names = ['br']
+    names = ['l']
     element_class = LineBreak
 
 
@@ -387,7 +386,16 @@ class ParagraphBreakParser(ElementParser):
 
     names = ['p']
     element_class = ParagraphBreak
-    allow_children = False
+
+    def parse1(self, context):
+        # A {p} element without children is a paragraph break, which is used to
+        # divide text into paragraphs. If the {p} element has children, though,
+        # we should place them inside a regular Paragraph element.
+        from .core import Paragraph
+        chunk = super().parse1(context)
+        if chunk.children:
+            return Paragraph(chunk.src, chunk.start_pos, chunk.end_pos, chunk.children)
+        return chunk
 
 
 #=============================================================================

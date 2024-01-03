@@ -47,7 +47,7 @@ with open('test_in.sm', 'r') as f:
 
 parse_context = ParseContext(s, parsers=parsers)
 document = DocumentParser().parse(parse_context)
-document.walk(lambda element, level: print(f"{' '*4*level}{element}"))
+# document.walk(lambda element, level: print(f"{' '*4*level}{element}"))
 
 render_context = RenderContext('html')
 html_out = f'<div class="simark">\n{document.render(render_context)}\n</div>\n'
@@ -68,9 +68,13 @@ style_out = """
     }
     .simark tr {
         border-top: thin solid black;
+        vertical-aligh: top;
     }
     .simark th, .simark td {
         padding: 0.2em 0.4em 0.2em 0.4em;
+    }
+    .simark th {
+        vertical-align: bottom;
     }
     .simark table>caption, .simark figcaption {
         margin-top: 0.4em;

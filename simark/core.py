@@ -30,6 +30,9 @@ def unescape(s, *patterns):
     return s
 
 
+re_whitespace = re.compile(r'\s+')
+
+
 class BaseElement(RenderMixin, Chunk):
 
     inline = False
@@ -49,7 +52,7 @@ class Text(BaseElement):
 
     def render_html(self, context):
         class_attr = self.get_class_attr(context)
-        html_out = html.escape(self.text)
+        html_out = html.escape(re.sub(re_whitespace, ' ', self.text))
         return f'<span{class_attr}>{html_out}</span>' if class_attr else html_out
 
     def __str__(self):
@@ -72,9 +75,13 @@ class TextParser(Parser):
 
 class Paragraph(BaseElement):
 
+    def before_child_setup(self, context):
+        # Render children compact
+        context.compact = True
+
     def render_html(self, context):
         indent, newline = self.get_whitespace()
-        return f'{indent}<p>{self.render_children_html(context).strip()}</p>{newline}'
+        return f'{indent}<p>{self.render_children_html(context)}</p>{newline}'
 
 
 class VerbatimParser(Parser):
@@ -192,14 +199,22 @@ bool_arguments = {
     '0': False,
 }
 
-class Arguments(Chunk):
+class Arguments:
 
-    def __init__(self, src, start_pos, end_pos, arg_chunks):
-        super().__init__(src, start_pos, end_pos, children=arg_chunks)
+    # This class doesn't need to descend from Chunk, because arguments won't
+    # be rendered (even though they affect rendered output), and do not need
+    # to be children of their parent element.
+
+    def __init__(self, arg_chunks=None):
         self.by_name = {}
         self.by_pos = []
-        for arg_chunk in arg_chunks:
-            self.append(arg_chunk.name, arg_chunk.value)
+        if arg_chunks:
+            for arg_chunk in arg_chunks:
+                self.append(arg_chunk.name, arg_chunk.value)
+
+    def update(self, arguments):
+        # Update named arguments with values from another Arguments object
+        self.by_name.update(arguments.by_name)
 
     def append(self, name, value):
         self.by_pos.append(value)
@@ -246,8 +261,8 @@ class ArgumentsParser(Parser):
 
     def parse1(self, context):
         start_pos = context.pos
-        arguments = self.parser.parse(context).children
-        return Arguments(context.src, start_pos, context.pos, arguments)
+        arg_chunks = self.parser.parse(context).children
+        return Arguments(arg_chunks)
 
 
 class PartsParser(Parser):
@@ -312,7 +327,7 @@ class Element(BaseElement):
     def __init__(self, src, start_pos, end_pos, children, name=None, arguments=None):
         super().__init__(src, start_pos, end_pos, children)
         self.name = name
-        self.arguments = arguments
+        self.arguments = arguments or Arguments()
 
     def __str__(self):
         return f"{self.__class__.__name__}[{self.start_pos}:{self.end_pos}] name={repr(self.name)}, arguments={repr(self.arguments)}"
