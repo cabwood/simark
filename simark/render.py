@@ -104,6 +104,7 @@ class RenderContext:
     def __init__(self, format, html_class_prefix=HTML_CLASS_PREFIX):
         self.format = format
         self.html_class_prefix = html_class_prefix
+        self.stack = []
         self.vars = {
             'section': EnvVar(self.get_section_numbers, None, self.inc_section),
             'list': EnvVar(self.get_list_numbers, None, self.inc_list),
@@ -111,9 +112,29 @@ class RenderContext:
             'figure': EnvVar(self.get_figure_numbers, None, self.inc_figure),
         }
         self.reset_counters()
+        self.compact = False
         self.chunk_parent = None
         self.chunk_depth = 0
-        self.compact = False
+
+    def push(self):
+        self.stack.append(self.get_state())
+
+    def pop(self, restore=True):
+        state = self.stack.pop()
+        if restore:
+            self.set_state(state)
+
+    def get_state(self):
+        return {
+            'compact': self.compact,
+            'chunk_parent': self.chunk_parent,
+            'chunk_depth': self.chunk_depth,
+        }
+
+    def set_state(self, state):
+        self.compact = state['compact']
+        self.chunk_parent = state['chunk_parent']
+        self.chunk_depth = state['chunk_depth']
 
     def reset_counters(self):
         self.reset_section()
@@ -282,14 +303,12 @@ class RenderMixin:
         return self._render(context)
 
     def _setup(self, context):
-        save_parent = context.chunk_parent
-        save_depth = context.chunk_depth
-        save_compact = context.compact
-        self.parent = save_parent
-        self.depth = save_depth
-        self.compact = save_compact
-        self.before_setup(context)
+        self.parent = context.chunk_parent
+        self.depth = context.chunk_depth
+        self.compact = context.compact
+        context.push()
         try:
+            self.before_setup(context)
             if self.children:
                 context.chunk_parent = self
                 context.chunk_depth += 1
@@ -298,9 +317,7 @@ class RenderMixin:
             self.setup(context)
             self.after_setup(context)
         finally:
-            context.chunk_parent = save_parent
-            context.chunk_depth = save_depth
-            context.compact = save_compact
+            context.pop()
 
     def before_setup(self, context):
         pass

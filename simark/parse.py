@@ -2,10 +2,8 @@
 
 class NoMatch(Exception):
     """
-    Raised by Parser.do_parse() to indicate that the element at the current
-    position does not meet the parser's requirements. Left uncaught, this
-    results in the parse context being restored to its state prior to the
-    call to Parser.do_parse()
+    Raised by Parser.parse1() or parse2() to indicate that the element at the
+    current position does not match with the parser's expected content.
     """
 
 
@@ -16,18 +14,11 @@ class NoMatch(Exception):
 
 class ParseContext:
 
-    def __init__(self, src, pos=0, parent=None, parsers=None):
-        self.parent = parent
+    def __init__(self, src, pos=0, parsers=None):
         self.src = src
         self.pos = pos
-        self.parent = parent
         self.parsers = parsers or []
-
-    def __enter__(self):
-        return self.copy()
-
-    def __exit__(self, exc_type, exc_value, exc_traceback):
-        return False
+        self.stack = []
 
     @property
     def end_pos(self):
@@ -37,11 +28,19 @@ class ParseContext:
     def eof(self):
         return self.pos >= self.end_pos
 
-    def copy(self):
-        return ParseContext(self.src, pos=self.pos, parent=self, parsers=self.parsers)
+    def push(self):
+        self.stack.append(self.get_state())
 
-    def commit(self):
-        self.parent.pos = self.pos
+    def pop(self, restore=False):
+        state = self.stack.pop()
+        if restore:
+            self.set_state(state)
+
+    def get_state(self):
+        return {'pos': self.pos}
+
+    def set_state(self, state):
+        self.pos = state['pos']
 
 
 #=============================================================================
@@ -107,11 +106,15 @@ class NullChunk(Chunk):
 class Parser:
 
     def parse(self, context):
-        with context as ctx:
-            chunk = self.parse1(ctx)
+        context.push()
+        try:
+            chunk = self.parse1(context)
             chunk = self.parse2(context, chunk)
-            ctx.commit()
+            context.pop(restore=False)
             return chunk
+        except NoMatch:
+            context.pop(restore=True)
+            raise
 
     def parse1(self, context):
         raise NotImplementedError
@@ -132,12 +135,7 @@ class All(Parser):
 
     def parse1(self, context):
         start_pos = context.pos
-        children = []
-        for parser in self.parsers:
-            chunk = parser.parse(context)
-            if not chunk:
-                raise NoMatch
-            children.append(chunk)
+        children = [parser.parse(context) for parser in self.parsers]
         return Chunk(context.src, start_pos, context.pos, children=children)
 
 
