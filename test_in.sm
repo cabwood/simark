@@ -2,11 +2,11 @@
 {section|
     {h|Cats `and` Dogs}
     {float right|
-        {table align=lmmr autohead=yes autofoot=yes caption=yes numbers=yes|
+        {table h_align=lmmr autohead=yes autofoot=yes caption=yes numbers=yes|
             {caption|Fruits and colours and other good things}
+            {head v_align=tbtb|apple|grape|kiwi|lemon, banana,{l}lime}
             1|2{l}3|4|5
-            apple|grape|kiwi|lemon
-            red|green|olive{l}green|yellow
+            {foot h_align=l__l|red|green|olive{l}green|yellow}
         }
     }
     {float right clear=yes|
