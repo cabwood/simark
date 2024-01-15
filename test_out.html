@@ -9,7 +9,6 @@
     .simark table {
         caption-side: bottom;
         border-collapse: collapse;
-        border: thin solid black;
         margin: 0.2em 0.4em 0.2em 0.4em;
     }
     .simark tr {
@@ -18,6 +17,7 @@
     }
     .simark th, .simark td {
         padding: 0.2em 0.4em 0.2em 0.4em;
+        border: thin solid black;
     }
     .simark th {
         vertical-align: bottom;
@@ -26,6 +26,12 @@
         margin-top: 0.4em;
         font-style: italic;
         font-size: 0.85rem;
+    }
+    .simark thead {
+        background-color: yellow;
+    }
+    .simark tfoot {
+        background-color: lime;
     }
     .simark figure {
         display: inline-table;
@@ -39,63 +45,52 @@
 </style>
 
 <div class="simark">
-  <h1 class="sml_title">Animals</h1>
-  <section>
-    <h1>1. Cats and Dogs</h1>
-    <div style="float: right;">
-      <table>
-        <caption>Table 1.1. Fruits and colours and other good things</caption>
-        <thead>
-          <tr>
-            <th style="text-align: left; vertical-align: top;"><p>apple</p></th>
-            <th style="text-align: center; vertical-align: bottom;"><p>grape</p></th>
-            <th style="text-align: center; vertical-align: top;"><p>kiwi</p></th>
-            <th style="text-align: right; vertical-align: bottom;"><p>lemon, banana,<br>lime</p></th>
+  <table>
+    <caption>Table 1. Fruits and colours and other good things</caption>
+    <thead>
+      <tr>
+        <th>1</th>
+        <th>2</th>
+        <th>3</th>
+        <th>4</th>
 
-          </tr>
+      </tr>
 
-        </thead>
-        <tbody>
-          <tr>
-            <td style="text-align: left;"><p>1</p></td>
-            <td style="text-align: center;"><p>2<br>3</p></td>
-            <td style="text-align: center;"><p>4</p></td>
-            <td style="text-align: right;"><p>5</p></td>
+    </thead>
+    <tbody>
+      <tr>
+        <td>A</td>
+        <td rowspan="2">B</td>
+        <td>C</td>
+        <td>D</td>
 
-          </tr>
+      </tr>
+      <tr>
+        <td>green</td>
+        <td>olive</td>
+        <td>yellow</td>
 
-        </tbody>
-        <tfoot>
-          <tr>
-            <td style="text-align: left;"><p>red</p></td>
-            <td><p>green</p></td>
-            <td><p>olive<br>green</p></td>
-            <td style="text-align: left;"><p>yellow</p></td>
+      </tr>
+      <tr>
+        <td>apple</td>
+        <td>grape</td>
+        <td>kiwi</td>
+        <td>lemon</td>
 
-          </tr>
+      </tr>
 
-        </tfoot>
+    </tbody>
+    <tfoot>
+      <tr>
+        <td>earth</td>
+        <td>mars</td>
+        <td>pluto</td>
+        <td>mercury</td>
 
-      </table>
+      </tr>
 
-    </div>
-    <div style="float: right; clear: both;">
-      <figure><img src="dog.png"><figcaption>Fig. 1.1. This is a dog</figcaption></figure>
-      <figure><img src="cat.png"><figcaption>Fig. 1.2. This is a cat with a caption too long for the image</figcaption></figure>
+    </tfoot>
 
-    </div>
-    <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore</p>
-    <p>magna aliqua. At quis risus sed vulputate odio ut enim blandit. Sit amet volutpat consequat mauris nunc congue nisi vitae suscipit. Aliquam vestibulum morbi</p>
-    <p><p>test</p></p>
-    <p>blandit cursus risus at ultrices mi. Est placerat in egestas erat imperdiet sed euismod nisi. Semper quis lectus nulla at volutpat diam ut venenatis. Arcu risus quis varius quam quisque id diam vel quam. Fames ac turpis egestas sed. Tortor at auctor urna nunc id. Placerat vestibulum lectus mauris ultrices eros in cursus turpis massa. Ullamcorper velit sed ullamcorper morbi tincidunt ornare massa. Ultricies integer quis auctor elit sed vulputate. Amet consectetur adipiscing elit duis tristique. Aliquam sem fringilla ut morbi tincidunt. Purus viverra accumsan in nisl nisi scelerisque. Pellentesque eu tincidunt tortor aliquam nulla facilisi cras fermentum odio. Orci eu lobortis elementum nibh. Placerat duis ultricies lacus sed turpis tincidunt id. Blandit massa enim nec dui nunc mattis. Nunc scelerisque viverra mauris in aliquam. Condimentum lacinia quis vel eros donec ac. Habitant morbi tristique senectus et netus et malesuada fames ac. Pellentesque eu tincidunt tortor aliquam nulla facilisi. Bibendum at varius vel pharetra vel turpis nunc eget. Faucibus turpis in eu mi bibendum neque egestas. Vulputate ut pharetra sit amet aliquam.</p>
-    <div style="text-align: center;">
-      <p>HERE</p>
-      <figure><img src="dog.png"><figcaption>Fig. 1.3. This is a dog with a large caption</figcaption></figure>
-      <p>THERE</p>
-
-    </div>
-    <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. At quis risus sed vulputate odio ut enim blandit. Sit amet volutpat consequat mauris nunc congue nisi vitae suscipit. Aliquam vestibulum morbi blandit cursus risus at ultrices mi. Est placerat in egestas erat imperdiet sed euismod nisi. Semper quis lectus nulla at volutpat diam ut venenatis. Arcu risus quis varius quam quisque id diam vel quam. Fames ac turpis egestas sed. Tortor at auctor urna nunc id. Placerat vestibulum lectus mauris ultrices eros in cursus turpis massa. Ullamcorper velit sed ullamcorper morbi tincidunt ornare massa. Ultricies integer quis auctor elit sed vulputate. Amet consectetur adipiscing elit duis tristique. Aliquam sem fringilla ut morbi tincidunt. Purus viverra accumsan in nisl nisi scelerisque. Pellentesque eu tincidunt tortor aliquam nulla facilisi cras fermentum odio. Orci eu lobortis elementum nibh. Placerat duis ultricies lacus sed turpis tincidunt id. Blandit massa enim nec dui nunc mattis. Nunc scelerisque viverra mauris in aliquam. Condimentum lacinia quis vel eros donec ac. Habitant morbi tristique senectus et netus et malesuada fames ac. Pellentesque eu tincidunt tortor aliquam nulla facilisi. Bibendum at varius vel pharetra vel turpis nunc eget. Faucibus turpis in eu mi bibendum neque egestas. Vulputate ut pharetra sit amet aliquam.</p>
-
-  </section>
+  </table>
 
 </div>

@@ -1,4 +1,4 @@
-
+import re
 
 class NoMatch(Exception):
     """
@@ -57,7 +57,7 @@ class Chunk:
         self.src = src
         self.start_pos = start_pos
         self.end_pos = end_pos
-        self.children = children
+        self._children = children
         self.depth = 0
 
     @property
@@ -74,10 +74,26 @@ class Chunk:
     def __str__(self):
         return f"{self.__class__.__name__}[{self.start_pos}:{self.end_pos}]"
 
+    def get_children(self):
+        if self._children is None:
+            self._children = []
+        return self._children
+
+    def set_children(self, children):
+        self._children = children
+
+    @property
+    def children(self):
+        return self.get_children()
+    @children.setter
+    def children(self, children):
+        self.set_children(children)
 
 class TextChunk(Chunk):
 
     def __init__(self, src, start_pos, end_pos, text):
+        if not isinstance(src, str):
+            raise ValueError
         super().__init__(src, start_pos, end_pos)
         self.text = text
 
@@ -90,6 +106,9 @@ class RegexChunk(Chunk):
     def __init__(self, src, start_pos, end_pos, match):
         super().__init__(src, start_pos, end_pos)
         self.match = match
+
+    def __str__(self):
+        return f"{self.__class__.__name__}[{self.start_pos}:{self.end_pos}] {repr(self.raw)}"
 
 
 class NullChunk(Chunk):
@@ -105,15 +124,21 @@ class NullChunk(Chunk):
 
 class Parser:
 
+    def __init__(self, consume=True):
+        self.consume = consume
+
     def parse(self, context):
         context.push()
         try:
+            start_pos = context.pos
             chunk = self.parse1(context)
             chunk = self.parse2(context, chunk)
+            if not self.consume:
+                context.pos = start_pos
             context.pop(restore=False)
             return chunk
         except NoMatch:
-            context.pop(restore=True)
+            context.pop(restore = True)
             raise
 
     def parse1(self, context):
@@ -130,7 +155,8 @@ class Parser:
 
 class All(Parser):
 
-    def __init__(self, *parsers):
+    def __init__(self, *parsers, consume=True):
+        super().__init__(consume=consume)
         self.parsers = parsers
 
     def parse1(self, context):
@@ -141,7 +167,8 @@ class All(Parser):
 
 class Any(Parser):
 
-    def __init__(self, *parsers):
+    def __init__(self, *parsers, consume=True):
+        super().__init__(consume=consume)
         self.parsers = parsers
 
     def parse1(self, context):
@@ -155,7 +182,8 @@ class Any(Parser):
 
 class Opt(Parser):
 
-    def __init__(self, parser):
+    def __init__(self, parser, consume=True):
+        super().__init__(consume=consume)
         self.parser = parser
 
     def parse1(self, context):
@@ -167,7 +195,8 @@ class Opt(Parser):
 
 class Many(Parser):
 
-    def __init__(self, parser, min_count=0, max_count=None):
+    def __init__(self, parser, min_count=0, max_count=None, consume=True):
+        super().__init__(consume=consume)
         self.parser = parser
         self.min_count = min_count
         self.max_count = max_count
@@ -193,27 +222,29 @@ class Many(Parser):
             last_pos = context.pos
         if count < self.min_count:
             raise NoMatch
-        return Chunk(context, start_pos, context.pos, children=children)
+        return Chunk(context.src, start_pos, context.pos, children=children)
 
 
 class Regex(Parser):
 
-    def __init__(self, regex):
-        self.regex = regex
+    def __init__(self, regex, consume=True):
+        super().__init__(consume=consume)
+        self.regex = regex if isinstance(regex, re.Pattern) else re.compile(regex)
 
-    def parse1(self, context, regex=None):
+    def parse1(self, context, regex=None, consume=True):
         start_pos = context.pos
         match = self.regex.match(context.src, pos=start_pos)
         if not match:
             raise NoMatch
         end_pos = match.end()
         context.pos = end_pos
-        return RegexChunk(context, start_pos, end_pos, match)
+        return RegexChunk(context.src, start_pos, end_pos, match)
 
 
 class Exact(Parser):
 
-    def __init__(self, text):
+    def __init__(self, text, consume=True):
+        super().__init__(consume=consume)
         self.text = text
 
     def parse1(self, context):
@@ -222,6 +253,6 @@ class Exact(Parser):
         if context.src[start_pos:end_pos] != self.text:
             raise NoMatch
         context.pos = end_pos
-        return TextChunk(context, start_pos, end_pos, self.text)
+        return TextChunk(context.src, start_pos, end_pos, self.text)
 
 

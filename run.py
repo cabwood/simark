@@ -63,7 +63,6 @@ style_out = """
     .simark table {
         caption-side: bottom;
         border-collapse: collapse;
-        border: thin solid black;
         margin: 0.2em 0.4em 0.2em 0.4em;
     }
     .simark tr {
@@ -72,6 +71,7 @@ style_out = """
     }
     .simark th, .simark td {
         padding: 0.2em 0.4em 0.2em 0.4em;
+        border: thin solid black;
     }
     .simark th {
         vertical-align: bottom;
@@ -80,6 +80,12 @@ style_out = """
         margin-top: 0.4em;
         font-style: italic;
         font-size: 0.85rem;
+    }
+    .simark thead {
+        background-color: yellow;
+    }
+    .simark tfoot {
+        background-color: lime;
     }
     .simark figure {
         display: inline-table;

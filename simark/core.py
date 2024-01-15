@@ -254,6 +254,11 @@ class Arguments:
             return default
         return bool_arguments.get(value.lower(), invalid)
 
+    def __str__(self):
+        args = [str(value) for value in self.by_pos]
+        args.extend([f'{name}={value}' for name, value in self.by_name.items()])
+        return f'({", ".join(args)})'
+
 
 class ArgumentsParser(Parser):
 
@@ -330,7 +335,7 @@ class Element(BaseElement):
         self.arguments = arguments or Arguments()
 
     def __str__(self):
-        return f"{self.__class__.__name__}[{self.start_pos}:{self.end_pos}] name={repr(self.name)}, arguments={repr(self.arguments)}"
+        return f"{self.__class__.__name__}[{self.start_pos}:{self.end_pos}]{self.arguments}"
 
 
 class ElementParser(PartsParser):

@@ -20,6 +20,9 @@ class Unknown(Element):
         else:
             return html.escape(self.raw)
 
+    def __str__(self):
+        return f"{self.__class__.__name__}[{self.start_pos}:{self.end_pos}] (name={self.name})"
+
 
 class UnknownParser(ElementParser):
 
