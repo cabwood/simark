@@ -61,7 +61,7 @@ class Text(BaseElement):
 
 class TextParser(Parser):
 
-    parser = Regex(re.compile(rf"(\\\\|\\`|\\{esc_element_open}|\\{esc_element_close}|[^`{esc_element_open}{esc_element_close}])+"))
+    parser = Regex(rf"(\\\\|\\`|\\{esc_element_open}|\\{esc_element_close}|[^`{esc_element_open}{esc_element_close}])+")
 
     def parse1(self, context):
         match = self.parser.parse(context).match
@@ -110,7 +110,7 @@ class AnyCharParser(Parser):
 
 class NonCloseCharParser(Parser):
 
-    parser = Regex(re.compile(rf"\\\\|\\`|\\{esc_element_open}|\\{esc_element_close}|[^{esc_element_close}]"))
+    parser = Regex(rf"\\\\|\\`|\\{esc_element_open}|\\{esc_element_close}|[^{esc_element_close}]")
 
     def parse1(self, context):
         match = self.parser.parse(context).match
@@ -124,7 +124,7 @@ class NonCloseCharParser(Parser):
 
 class DoubleQuotedParser(Parser):
     
-    parser = Regex(re.compile(r'\s*"((?:\\\\|\\"|[^"])*)"'))
+    parser = Regex(r'\s*"((?:\\\\|\\"|[^"])*)"')
 
     def parse1(self, context):
         match = self.parser.parse(context).match
@@ -136,7 +136,7 @@ class DoubleQuotedParser(Parser):
 
 class SingleQuotedParser(Parser):
     
-    parser = Regex(re.compile(r"\s*'((?:\\\\|\\'|[^'])*)'"))
+    parser = Regex(r"\s*'((?:\\\\|\\'|[^'])*)'")
 
     def parse1(self, context):
         match = self.parser.parse(context).match
@@ -148,7 +148,7 @@ class SingleQuotedParser(Parser):
 
 class UnquotedParser(Parser):
     
-    parser = Regex(re.compile(rf"""\s*((?:\\"|\\'\\{esc_element_close}|\\{esc_element_split}|[^\s{esc_element_close}{esc_element_split}])*)\s*"""))
+    parser = Regex(rf"""\s*((?:\\"|\\'\\{esc_element_close}|\\{esc_element_split}|[^\s{esc_element_close}{esc_element_split}])*)\s*""")
 
     def parse1(self, context):
         match = self.parser.parse(context).match
@@ -163,7 +163,7 @@ class UnquotedParser(Parser):
 
 class ArgumentParser(Parser):
 
-    name_parser = Regex(re.compile(rf"\s*([A-Za-z0-9_]+)\s*="))
+    name_parser = Regex(rf"\s*([A-Za-z0-9_]+)\s*=")
     value_parser = Any(
         DoubleQuotedParser(),
         SingleQuotedParser(),
@@ -345,10 +345,10 @@ class ElementParser(PartsParser):
     element_class = 'Element'
     allow_children = True
 
-    open_parser = Exact(ELEMENT_OPEN)
-    name_parser = Regex(re.compile(rf"\s*([A-Za-z0-9_]+)"))
-    split_parser = Regex(re.compile(rf"\s*{esc_element_split}"))
-    close_parser = Regex(re.compile(rf"\s*({esc_element_close}|$)"))
+    open_parser = Regex(rf"\s*{esc_element_open}")
+    name_parser = Regex(rf"\s*([A-Za-z0-9_]+)")
+    split_parser = Regex(rf"\s*{esc_element_split}")
+    close_parser = Regex(rf"\s*({esc_element_close}|$)")
     arguments_parser = ArgumentsParser()
 
     def parse1(self, context):

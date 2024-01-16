@@ -49,59 +49,14 @@ parse_context = ParseContext(s, parsers=parsers)
 document = DocumentParser().parse(parse_context)
 # document.walk(lambda element, level: print(f"{' '*4*level}{element}"))
 
+
 render_context = RenderContext('html')
 html_out = f'<div class="simark">\n{document.render(render_context)}\n</div>\n'
 
-style_out = """
-<style>
-    .simark {
-        font-family: Helvetica, sans-serif;
-    }
-    .simark_title {
-        text-align: center;
-    }
-    .simark table {
-        caption-side: bottom;
-        border-collapse: collapse;
-        margin: 0.2em 0.4em 0.2em 0.4em;
-    }
-    .simark tr {
-        border-top: thin solid black;
-        vertical-aligh: top;
-    }
-    .simark th, .simark td {
-        padding: 0.2em 0.4em 0.2em 0.4em;
-        border: thin solid black;
-    }
-    .simark th {
-        vertical-align: bottom;
-    }
-    .simark table>caption, .simark figcaption {
-        margin-top: 0.4em;
-        font-style: italic;
-        font-size: 0.85rem;
-    }
-    .simark thead {
-        background-color: yellow;
-    }
-    .simark tfoot {
-        background-color: lime;
-    }
-    .simark figure {
-        display: inline-table;
-        margin: 0.2em 0.4em 0.2em 0.4em;
-    }
-    .simark figcaption {
-        display: table-caption;
-        caption-side: bottom;
-        text-align: center;
-    }
-</style>
-
-"""
+css = '<link rel="stylesheet" href="test.css">\n'
 
 with open('test_out.html', 'w') as f:
-    f.write(style_out + html_out)
+    f.write(css + html_out)
 
 # print(html_out)
 

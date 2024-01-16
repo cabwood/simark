@@ -1,0 +1,38 @@
+.simark {
+  font-family: Helvetica, sans-serif;
+}
+.simark_title {
+  text-align: center;
+}
+.simark table {
+  caption-side: bottom;
+  border-collapse: collapse;
+  margin: 0.2em 0.4em 0.2em 0.4em;
+}
+.simark th, .simark td {
+  border: thin solid black;
+  padding: 0.2em 0.4em 0.2em 0.4em;
+}
+.simark th {
+    vertical-align: bottom;
+}
+.simark table>caption, .simark figcaption {
+  margin-top: 0.4em;
+  font-style: italic;
+  font-size: 0.85rem;
+}
+.simark thead {
+  background-color: yellow;
+}
+.simark tfoot {
+  background-color: lime;
+}
+.simark figure {
+  display: inline-table;
+  margin: 0.2em 0.4em 0.2em 0.4em;
+}
+.simark figcaption {
+  display: table-caption;
+  caption-side: bottom;
+  text-align: center;
+}

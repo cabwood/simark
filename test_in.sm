@@ -1,10 +1,10 @@
-{table col_borders=123 autohead=no autofoot=no caption=yes numbers=yes|
-    {caption|Fruits and colours and other good things}
-    |1|2|3|4
-    ---
-    |A|~B|C|D
-    |green|olive|yellow
-    |apple|grape|kiwi|lemon
-    ---
-    |earth|mars|pluto|mercury
+{table|
+            {caption|Fruits and colours and other good things}
+            |      1       |        2       |       3        |       4       |
+            ------------------------------------------------------------------
+            |      A       ||~~             B                |       C       |
+            |    green                                       |     olive     |
+            |    apple     |      grape     |      kiwi      |     lemon     |
+            ------------------------------------------------------------------
+    {row|   |    earth     |       mars     |      pluto     |     mercury   |  }
 }

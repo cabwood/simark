@@ -6,6 +6,21 @@ from .core import ElementParser, Element, Text, VerbatimParser, Arguments, \
     ESC_BACKSLASH, ESC_BACKTICK, ESC_ELEMENT_OPEN, ESC_ELEMENT_CLOSE
 
 
+table_col_align_attrs = {
+    '_': '',
+    '<': 'text-align: left;',
+    '-': 'text-align: center;',
+    '>': 'text-align: right;',
+}
+
+table_row_align_attrs = {
+    '_': '',
+    '<': 'vertical-align: top;',
+    '-': 'vertical-align: middle;',
+    '>': 'vertical-align: bottom;',
+}
+
+
 class TableCaption(Element):
 
     def __init__(self, src, start_pos, end_pos, children, name=None, arguments=None, show_numbers=None, visible=None):
@@ -38,10 +53,6 @@ class TableCaptionParser(ElementParser):
         extra['show_numbers'] = arguments.get_bool('numbers')
         return arguments
 
-
-border_flags = '_0123456789'
-h_align_flags = '_lcmr'
-v_align_flags = '_tcmb'
 
 class BaseTableElement(Element):
     """
@@ -161,18 +172,15 @@ class TableTextParser(Parser):
     is False, '\\n' will also terminate the text.
     """
 
-    forbid_newline_parser = Regex(re.compile(rf"(\\\\|\\`|\\\||\\{esc_element_open}|\\{esc_element_close}|[^|\n`{esc_element_open}{esc_element_close}])+"))
-    allow_newline_parser = Regex(re.compile(rf"(\\\\|\\`|\\\||\\{esc_element_open}|\\{esc_element_close}|[^|`{esc_element_open}{esc_element_close}])+"))
-
     def __init__(self, allow_newline=False):
         super().__init__()
-        self.allow_newline = allow_newline
+        if allow_newline:
+            self.parser = Regex(re.compile(rf"(\\\\|\\`|\\\||\\{esc_element_open}|\\{esc_element_close}|[^|`{esc_element_open}{esc_element_close}])+"))
+        else:
+            self.parser = Regex(re.compile(rf"(\\\\|\\`|\\\||\\{esc_element_open}|\\{esc_element_close}|[^|\n`{esc_element_open}{esc_element_close}])+"))
 
     def parse1(self, context):
-        if self.allow_newline:
-            match = self.allow_newline_parser.parse(context).match
-        else:
-            match = self.forbid_newline_parser.parse(context).match
+        match = self.parser.parse(context).match
         return Text(context.src, match.start(0), match.end(0), unescape(match[0],
             ESC_BACKSLASH,
             ESC_BACKTICK,
@@ -180,23 +188,6 @@ class TableTextParser(Parser):
             ESC_ELEMENT_CLOSE,
             ('\\|', '|'),
         ))
-
-
-table_col_align_attrs = {
-    '_': '',
-    'l': 'text-align: left;',
-    'm': 'text-align: center;',
-    'c': 'text-align: center;',
-    'r': 'text-align: right;',
-}
-
-table_row_align_attrs = {
-    '_': '',
-    't': 'vertical-align: top;',
-    'm': 'vertical-align: middle;',
-    'c': 'vertical-align: middle;',
-    'b': 'vertical-align: bottom;',
-}
 
 
 class TableCell(BaseTableElement):
@@ -239,23 +230,21 @@ class TableCellShortParser(Parser):
     delimited content.
     """
 
-    allow_newline_lead_parser = Regex(r'\s*(\|+)(~*)([<>-]?)')
-    forbid_newline_lead_parser = Regex(r'[^\S\n]*(\|+)(~*)([<>-]?)')
-    
     def __init__(self, allow_newline=False):
         super().__init__()
-        self.allow_newline = allow_newline
+        if allow_newline:
+            self.lead_parser = Regex(r'\s*(\|+)(~*)([<>-]?)')
+        else:
+            self.lead_parser = Regex(r'[^\S\n]*(\|+)(~*)([<>-]?)')
+        self.text_parser = TableTextParser(allow_newline=allow_newline)
 
     def parse1(self, context):
-        if not hasattr(self, '_child_parser'):
-            self._child_parser = self.get_child_parser(context)
+        if not hasattr(self, 'child_parser'):
+            self.child_parser = self.get_child_parser(context)
         start_pos = context.pos
         try:
             # Absence of opening '|' is acceptable
-            if self.allow_newline:
-                lead = self.allow_newline_lead_parser.parse(context)
-            else:
-                lead = self.forbid_newline_lead_parser.parse(context)
+            lead = self.lead_parser.parse(context)
         except NoMatch:
             lead = None
             col_span = 1
@@ -263,9 +252,9 @@ class TableCellShortParser(Parser):
             col_align = '_'
         else:
             col_span = len(lead.match[1])
-            row_span = len(lead.match[2]) + 1
+            row_span = max(1, len(lead.match[2]))
             col_align = lead.match[3] if lead.match[3] else '_'
-        children = self._child_parser.parse(context).children
+        children = self.child_parser.parse(context).children
         return TableCell(context.src, start_pos, context.pos, children, col_span=col_span, row_span=row_span, col_align=col_align)
 
     def get_child_parser(self, context):
@@ -273,7 +262,7 @@ class TableCellShortParser(Parser):
             Any(
                 VerbatimParser(),
                 *context.parsers,
-                TableTextParser(allow_newline=self.allow_newline),
+                self.text_parser,
             ),
         )
 
@@ -307,18 +296,13 @@ class TableCellParser(Parser):
 
     def __init__(self, allow_newline=False):
         super().__init__()
-        self.allow_newline = allow_newline
+        self.parser = Any(
+            TableCellElementParser(),
+            TableCellShortParser(allow_newline=allow_newline),
+        )
 
     def parse1(self, context):
-        if not hasattr(self, '_child_parser'):
-            self._child_parser = self.get_child_parser()
-        return self._child_parser.parse(context)
-
-    def get_child_parser(self):
-        return Any(
-            TableCellElementParser(),
-            TableCellShortParser(allow_newline=self.allow_newline),
-        )
+        return self.parser.parse(context)
 
 
 class TableRow(BaseTableElement):
