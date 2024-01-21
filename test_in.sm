@@ -1,10 +1,11 @@
-{table|
-            {caption|Fruits and colours and other good things}
-            |      1       |        2       |       3        |       4       |
-            ------------------------------------------------------------------
-            |      A       ||~~             B                |       C       |
-            |    green                                       |     olive     |
-            |    apple     |      grape     |      kiwi      |     lemon     |
-            ------------------------------------------------------------------
-    {row|   |    earth     |       mars     |      pluto     |     mercury   |  }
+{table row_borders=0000000000|
+    {caption|Fruits and colours and other good things}
+    |     1{l}x     |      2        |        3      |       4       |
+    |     1{l}x     |      2        |        3      |       4       |
+    -----------------------------------------------------------------
+    |      A        ||~~            B               |       C       |
+    |  {i|green}                                    |     olive     |
+    |    apple      |     grape     |      kiwi     |     lemon     |
+    -----------------------------------------------------------------
+    |    earth      |  {cell|mars}  |     pluto     |     mercury   |
 }

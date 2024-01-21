@@ -345,10 +345,10 @@ class ElementParser(PartsParser):
     element_class = 'Element'
     allow_children = True
 
-    open_parser = Regex(rf"\s*{esc_element_open}")
-    name_parser = Regex(rf"\s*([A-Za-z0-9_]+)")
-    split_parser = Regex(rf"\s*{esc_element_split}")
-    close_parser = Regex(rf"\s*({esc_element_close}|$)")
+    open_parser = Exact(ELEMENT_OPEN)
+    name_parser = Regex(r'\s*([A-Za-z0-9_]+)')
+    split_parser = Regex(rf'\s*{esc_element_split}')
+    close_parser = Regex(rf'\s*({esc_element_close}|$)')
     arguments_parser = ArgumentsParser()
 
     def parse1(self, context):
@@ -366,22 +366,25 @@ class ElementParser(PartsParser):
         except NoMatch:
             children = []
         else:
-            if not hasattr(self, '_child_parser'):
-                self._child_parser = self.get_child_parser(context)
-            children = self._child_parser.parse(context).children
+            children = self.parse_children(context)
         children = self.check_children(context, children, extra)
         self.close_parser.parse(context)
         return self.make_element(context.src, start_pos, context.pos, children, **extra)
 
+    def parse_children(self, context):
+        return self.get_child_parser(context).parse(context).children
+
     def get_child_parser(self, context):
-        return Many(
-            Any(
-                VerbatimParser(),
-                *context.parsers,
-                TextParser(),
-                NonCloseCharParser(),
+        if not hasattr(self, '_child_parser'):
+            self._child_parser = Many(
+                Any(
+                    VerbatimParser(),
+                    *context.state.get('parsers', []),
+                    TextParser(),
+                    NonCloseCharParser(),
+                )
             )
-        )
+        return self._child_parser
 
     def get_names(self):
         if self.name_case_sensitive:
@@ -427,7 +430,7 @@ class DocumentParser(PartsParser):
         return Many(
             Any(
                 VerbatimParser(),
-                *context.parsers,
+                *context.state.get('parsers', []),
                 TextParser(),
                 AnyCharParser(),
             )

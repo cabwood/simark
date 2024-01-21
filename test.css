@@ -10,22 +10,12 @@
   margin: 0.2em 0.4em 0.2em 0.4em;
 }
 .simark th, .simark td {
-  border: thin solid black;
   padding: 0.2em 0.4em 0.2em 0.4em;
-}
-.simark th {
-    vertical-align: bottom;
 }
 .simark table>caption, .simark figcaption {
   margin-top: 0.4em;
   font-style: italic;
   font-size: 0.85rem;
-}
-.simark thead {
-  background-color: yellow;
-}
-.simark tfoot {
-  background-color: lime;
 }
 .simark figure {
   display: inline-table;
@@ -35,4 +25,82 @@
   display: table-caption;
   caption-side: bottom;
   text-align: center;
+}
+
+.simark tr:first-child th {
+  border-top: thin solid black;
+}
+.simark tr:last-child th {
+  border-bottom: thin solid black;
+}
+.simark tr:last-child td {
+  border-bottom: thin solid black;
+}
+
+.simark .sml_al {
+  text-align: left;
+}
+.simark .sml_ac {
+  text-align: center;
+}
+.simark .sml_ar {
+  text-align: right;
+}
+.simark .sml_at {
+  vertical-align: top;
+}
+.simark .sml_am {
+  vertical-align: middle;
+}
+.simark .sml_ab {
+  vertical-align: bottom;
+}
+.simark .sml_bl0 {
+  border-left: none;
+}
+.simark .sml_br0 {
+  border-right: none;
+}
+.simark .sml_bt0 {
+  border-top: none;
+}
+.simark .sml_bb0.sml_bb0 {
+  border-bottom: none;
+  background-color: yellow;
+}
+.simark .sml_bl1 {
+  border-left: thin solid black;
+}
+.simark .sml_br1 {
+  border-right: thin solid black;
+}
+.simark .sml_bt1 {
+  border-top: thin solid black;
+}
+.simark .sml_bb1 {
+  border-bottom: thin solid black;
+}
+.simark .sml_bl2 {
+  border-left: medium solid black;
+}
+.simark .sml_br2 {
+  border-right: medium solid black;
+}
+.simark .sml_bt2 {
+  border-top: medium solid black;
+}
+.simark .sml_bb2 {
+  border-bottom: medium solid black;
+}
+.simark .sml_bl3 {
+  border-left: thick solid black;
+}
+.simark .sml_br3 {
+  border-right: thick solid black;
+}
+.simark .sml_bt3 {
+  border-top: thick solid black;
+}
+.simark .sml_bb3 {
+  border-bottom: thick solid black;
 }

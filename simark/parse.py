@@ -14,11 +14,11 @@ class NoMatch(Exception):
 
 class ParseContext:
 
-    def __init__(self, src, pos=0, parsers=None):
+    def __init__(self, src, pos=0, **kwargs):
         self.src = src
         self.pos = pos
-        self.parsers = parsers or []
         self.stack = []
+        self.state = kwargs
 
     @property
     def end_pos(self):
@@ -28,19 +28,13 @@ class ParseContext:
     def eof(self):
         return self.pos >= self.end_pos
 
-    def push(self):
-        self.stack.append(self.get_state())
+    def push(self, **kwargs):
+        self.stack.append(self.state)
+        self.state = self.state.copy()
+        self.state.update(kwargs)
 
-    def pop(self, restore=False):
-        state = self.stack.pop()
-        if restore:
-            self.set_state(state)
-
-    def get_state(self):
-        return {'pos': self.pos}
-
-    def set_state(self, state):
-        self.pos = state['pos']
+    def pop(self):
+        self.state = self.stack.pop()
 
 
 #=============================================================================
@@ -128,17 +122,15 @@ class Parser:
         self.consume = consume
 
     def parse(self, context):
-        context.push()
+        pos = context.pos
         try:
-            start_pos = context.pos
             chunk = self.parse1(context)
             chunk = self.parse2(context, chunk)
             if not self.consume:
-                context.pos = start_pos
-            context.pop(restore=False)
+                context.pos = pos
             return chunk
         except NoMatch:
-            context.pop(restore = True)
+            context.pos = pos
             raise
 
     def parse1(self, context):
@@ -229,7 +221,7 @@ class Regex(Parser):
 
     def __init__(self, regex, consume=True):
         super().__init__(consume=consume)
-        self.regex = regex if isinstance(regex, re.Pattern) else re.compile(regex)
+        self.regex = regex if isinstance(regex, re.Pattern) else re.compile(regex, re.MULTILINE)
 
     def parse1(self, context, regex=None, consume=True):
         start_pos = context.pos

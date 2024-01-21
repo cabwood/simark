@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 from simark.parse import *
 from simark.table import *
 
@@ -43,11 +45,9 @@ parsers = [
     UnknownParser(),
 ]
 
-parser = Many(TableRowParser())
+parser = _RowShortParser()
 
-src = """{row| a | b | {cell|c} \n | {cell|d} |}
-{cell|{b|hello}} | there | everyone \n | nice | to | see | you
-"""
+src = """a | b | c """
 
 context = ParseContext(src, parsers=parsers)
 
