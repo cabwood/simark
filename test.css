@@ -27,16 +27,6 @@
   text-align: center;
 }
 
-.simark tr:first-child th {
-  border-top: thin solid black;
-}
-.simark tr:last-child th {
-  border-bottom: thin solid black;
-}
-.simark tr:last-child td {
-  border-bottom: thin solid black;
-}
-
 .simark .sml_al {
   text-align: left;
 }
@@ -64,9 +54,8 @@
 .simark .sml_bt0 {
   border-top: none;
 }
-.simark .sml_bb0.sml_bb0 {
+.simark .sml_bb0 {
   border-bottom: none;
-  background-color: yellow;
 }
 .simark .sml_bl1 {
   border-left: thin solid black;
