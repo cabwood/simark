@@ -1,9 +1,11 @@
 import re
+from .context import BaseContext
+
 
 class NoMatch(Exception):
     """
-    Raised by Parser.parse1() or parse2() to indicate that the element at the
-    current position does not match with the parser's expected content.
+    Raised during parsing to indicate that the element at the current position
+    does not match with expected content.
     """
 
 
@@ -12,13 +14,12 @@ class NoMatch(Exception):
 #=============================================================================
 
 
-class ParseContext:
+class ParseContext(BaseContext):
 
     def __init__(self, src, pos=0, **kwargs):
+        super().__init__(**kwargs)
         self.src = src
         self.pos = pos
-        self.stack = []
-        self.state = kwargs
 
     @property
     def end_pos(self):
@@ -27,14 +28,6 @@ class ParseContext:
     @property
     def eof(self):
         return self.pos >= self.end_pos
-
-    def push(self, **kwargs):
-        self.stack.append(self.state)
-        self.state = self.state.copy()
-        self.state.update(kwargs)
-
-    def pop(self):
-        self.state = self.stack.pop()
 
 
 #=============================================================================
@@ -82,6 +75,7 @@ class Chunk:
     @children.setter
     def children(self, children):
         self.set_children(children)
+
 
 class TextChunk(Chunk):
 

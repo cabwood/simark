@@ -75,12 +75,15 @@ class TextParser(Parser):
 
 class Paragraph(BaseElement):
 
-    def before_child_setup(self, context):
+    def setup_enter(self, context):
         # Render children compact
-        context.compact = True
+        context.push('main', compact=True)
+
+    def setup_exit(self, context):
+        context.pop('main')
 
     def render_html(self, context):
-        indent, newline = self.get_whitespace()
+        indent, newline = self.get_whitespace(context)
         return f'{indent}<p>{self.render_children_html(context)}</p>{newline}'
 
 
@@ -393,10 +396,11 @@ class ElementParser(PartsParser):
 
     def get_child_parser(self, context):
         if not hasattr(self, '_child_parser'):
+            parsers = context.get_stack('main').get('parsers', [])
             self._child_parser = Many(
                 Any(
                     VerbatimParser(),
-                    *context.state.get('parsers', []),
+                    *parsers,
                     TextParser(),
                     NonCloseCharParser(),
                 )
@@ -422,19 +426,20 @@ class Document(BaseElement):
 class DocumentParser(PartsParser):
 
     def parse1(self, context):
-        if not hasattr(self, '_child_parser'):
-            self._child_parser = self.get_child_parser(context)
-        chunk = self._child_parser.parse(context)
+        chunk = self.get_child_parser(context).parse(context)
         return Document(context.src, chunk.start_pos, chunk.end_pos, chunk.children)
 
     def get_child_parser(self, context):
-        return Many(
-            Any(
-                VerbatimParser(),
-                *context.state.get('parsers', []),
-                TextParser(),
-                AnyCharParser(),
+        if not hasattr(self, '_child_parser'):
+            parsers = context.get_stack('main').get('parsers', [])
+            self._child_parser = Many(
+                Any(
+                    VerbatimParser(),
+                    *parsers,
+                    TextParser(),
+                    AnyCharParser(),
+                )
             )
-        )
+        return self._child_parser
 
 

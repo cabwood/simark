@@ -44,7 +44,7 @@ class Reference(Element):
         super().__init__(src, start_pos, end_pos, children, name, arguments)
         self.var_name = var_name
 
-    def setup(self, context):
+    def setup_enter(self, context):
         self.var_value = str(context.get_var(self.var_name))
 
     def render_html(self, context):
@@ -78,7 +78,7 @@ class Define(Element):
         super().__init__(src, start_pos, end_pos, children, name, arguments)
         self.var_name = var_name
 
-    def setup(self, context):
+    def setup_enter(self, context):
         # Ignore anything that isn't Text or Reference. Accumulate
         # plain text content, for variable value.
         value = ''
@@ -120,7 +120,7 @@ class Increment(Element):
         super().__init__(src, start_pos, end_pos, children, name, arguments)
         self.var_name = var_name
 
-    def setup(self, context):
+    def setup_enter(self, context):
         context.inc_var(self.var_name)
 
     def render_html(self, context):
@@ -181,17 +181,22 @@ class Section(Element):
         super().__init__(src, start_pos, end_pos, children, name, arguments)
         self.start_num = start_num
 
-    def before_child_setup(self, context):
-        context.begin_section(start_num=self.start_num)
+    def setup_enter(self, context):
+        context.get_stack('section').enter()
 
-    def after_child_setup(self, context):
-        context.end_section()
+    def setup_exit(self, context):
+        context.get_stack('section').exit()
 
     def render_html(self, context):
         html_out = self.render_children_html(context)
         class_attr = self.get_class_attr(context)
-        indent, newline = self.get_whitespace()
+        indent, newline = self.get_whitespace(context)
         return f'{indent}<section{class_attr}>{newline}{html_out}{newline}{indent}</section>{newline}'
+
+    @classmethod
+    def get_section_info(cls, context):
+        stack = context.get_stack('section')
+        return stack, stack.get('level', default=0), stack.get('number', default=1), stack.get('text', default=str(number))
 
 
 class SectionParser(ElementParser):
@@ -215,9 +220,9 @@ class Heading(Element):
         self.level = level
         self.show_numbers = show_numbers
 
-    def setup(self, context):
+    def setup_enter(self, context):
         if self.level is None:
-            self.level = context.section_level
+            self.level = context.get_stack('section').level
         # No numbering at top level
         if self.level == 0:
             self.numbers = ''
@@ -238,7 +243,7 @@ class Heading(Element):
             html_classes.append('title')
         class_attr = self.get_class_attr(context, *html_classes)
         level = max(min(6, self.level), 1)
-        indent, newline = self.get_whitespace()
+        indent, newline = self.get_whitespace(context)
         return f'{indent}<h{level}{class_attr}>{html_out}</h{level}>{newline}'
 
 
@@ -273,10 +278,10 @@ class List(Element):
         self.style = style
         self.start_num = start_num
 
-    def before_child_setup(self, context):
+    def setup_enter(self, context):
         context.begin_list(self.style, start_num=self.start_num)
 
-    def after_child_setup(self, context):
+    def setup_exit(self, context):
         context.end_list()
 
     def render_html(self, context):
@@ -285,7 +290,7 @@ class List(Element):
         start_attr = '' if self.start_num == 1 else f' start="{self.start_num}"'
         tag = 'ol' if self.style in '1aAiI' else 'ul'
         html_out = self.render_children_html(context)
-        indent, newline = self.get_whitespace()
+        indent, newline = self.get_whitespace(context)
         return f'{indent}<{tag}{class_attr}{style_attr}{start_attr}>{newline}{html_out}{newline}{indent}</{tag}>{newline}'
 
 
@@ -307,16 +312,16 @@ class ListItem(Element):
 
     paragraphs = True
 
-    def before_child_setup(self, context):
+    def setup_enter(self, context):
         context.inc_list()
 
-    def setup(self, context):
+    def setup_enter(self, context):
         self.numbers = context.list_numbers
 
     def render_html(self, context):
         class_attr = self.get_class_attr(context)
         html_out = self.render_children_html(context)
-        indent, newline = self.get_whitespace()
+        indent, newline = self.get_whitespace(context)
         return f'{indent}<li{class_attr}>{newline}{html_out}{newline}{indent}</li>{newline}'
 
 
@@ -424,7 +429,7 @@ class Code(Element):
     def render_html(self, context):
         class_attr = self.get_class_attr(context)
         html_out = self.render_children_html(context)
-        indent, newline = self.get_whitespace()
+        indent, newline = self.get_whitespace(context)
         return f'{indent}<pre{class_attr}>{html_out}</pre>{newline}'
 
 
@@ -489,7 +494,7 @@ class Float(Element):
         content_html = self.render_children_html(context)
         float_style = float_styles[self.align]
         clear_style = ' clear: both;' if self.clear else ''
-        indent, newline = self.get_whitespace()
+        indent, newline = self.get_whitespace(context)
         return f'{indent}<div style="{float_style}{clear_style}">{newline}{content_html}{newline}{indent}</div>{newline}'
 
 
@@ -535,7 +540,7 @@ class Block(Element):
         class_attr = self.get_class_attr(context)
         style_attr = f' style="{block_align_styles[self.align]}"' if self.align else ''
         html_out = self.render_children_html(context)
-        indent, newline = self.get_whitespace()
+        indent, newline = self.get_whitespace(context)
         return f'{indent}<div{class_attr}{style_attr}>{newline}{html_out}{newline}{indent}</div>{newline}'
 
 

@@ -1,5 +1,7 @@
 from string import ascii_uppercase
 from roman import toRoman
+from .context import Stack, BaseContext
+
 
 HTML_CLASS_PREFIX = 'sml_'
 
@@ -95,46 +97,56 @@ class EnvVar(ContextVar):
             self.inc_func()
 
 
-class RenderContext:
+class SectionStack(Stack):
+
+    def __init__(self):
+        super().__init__('section', level=0, number=1, text='1', parent_text='')
+
+    def get_level(self):
+        return self.get('level', default=0)
+    
+    level = property(get_level)
+
+    def get_number(self):
+        return self.get('number', default=1)
+
+    def get_text(self):
+        return self.get('text', default=str(self.get_number()))
+
+    def get_parent_text(self):
+        return self.get('parent_text', default='')
+
+    def inc(self):
+        self.set('number', self.get_number() + 1)
+
+    def enter(self, start_num=1):
+        text = self.get_text()
+        self.push(number=start_num, level=self.get_level()+1, parent_text=text, text=f'{text}.{start_num}')
+
+    def exit(self):
+        self.pop()
+        self.inc()
+
+
+class RenderContext(BaseContext):
 
     show_heading_numbers = True
     show_table_numbers = True
     show_figure_numbers = True
 
-    def __init__(self, format, compact=False, html_class_prefix=HTML_CLASS_PREFIX):
+    def __init__(self, format, html_class_prefix=HTML_CLASS_PREFIX, **kwargs):
+        super().__init__(**kwargs)
         self.format = format
-        self.compact = compact
         self.html_class_prefix = html_class_prefix
-        self.stack = []
+        section_stack = SectionStack()
+        self.add_stack(section_stack)
         self.vars = {
-            'section': EnvVar(self.get_section_numbers, None, self.inc_section),
+            'section': EnvVar(section_stack.get_text, None, section_stack.inc),
             'list': EnvVar(self.get_list_numbers, None, self.inc_list),
             'table': EnvVar(self.get_table_numbers, None, self.inc_table),
             'figure': EnvVar(self.get_figure_numbers, None, self.inc_figure),
         }
         self.reset_counters()
-        self.chunk_parent = None
-        self.chunk_depth = 0
-
-    def push(self):
-        self.stack.append(self.get_state())
-
-    def pop(self, restore=True):
-        state = self.stack.pop()
-        if restore:
-            self.set_state(state)
-
-    def get_state(self):
-        return {
-            'compact': self.compact,
-            'chunk_parent': self.chunk_parent,
-            'chunk_depth': self.chunk_depth,
-        }
-
-    def set_state(self, state):
-        self.compact = state['compact']
-        self.chunk_parent = state['chunk_parent']
-        self.chunk_depth = state['chunk_depth']
 
     def reset_counters(self):
         self.reset_section()
@@ -303,29 +315,27 @@ class RenderMixin:
         return self._render(context)
 
     def _setup(self, context):
-        self.parent = context.chunk_parent
-        self.depth = context.chunk_depth
-        self.compact = context.compact
-        context.push()
+        stack = context.get_stack('main')
+        self.parent = stack.get('parent', default=None)
+        self.depth = stack.get('depth', default=0)
+        self.compact = stack.get('compact', default=None)
+        self.setup_enter(context)
         try:
-            self.before_child_setup(context)
-            if self.children:
-                context.chunk_parent = self
-                context.chunk_depth += 1
+            stack.push(parent=self, depth=self.depth+1)
+            try:
                 for child in self.children:
                     child._setup(context)
-            self.after_child_setup(context)
-            self.setup(context)
+            finally:
+                stack.pop()
         finally:
-            context.pop()
+            self.setup_exit(context)
 
-    def before_child_setup(self, context):
+    def setup_enter(self, context):
+        """Called prior to setting up children"""
         pass
 
-    def after_child_setup(self, context):
-        pass
-
-    def setup(self, context):
+    def setup_exit(self, context):
+        """Called after children have been setup"""
         pass
 
     def _render(self, context):
@@ -351,10 +361,10 @@ class RenderMixin:
             return ''.join([child.render_html(context) for child in self.children])
         return ''
 
-    def get_whitespace(self):
-        indent = '' if self.compact else ' ' * 2 * self.depth
+    def get_whitespace(self, context):
+        indent = '' if self.compact else '  ' * self.depth
         newline = '' if self.compact else '\n'
-        return indent, newline 
+        return indent, newline
 
     def get_class_attr(self, context, *classes):
         prefix = context.html_class_prefix or ""
