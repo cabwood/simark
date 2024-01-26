@@ -28,9 +28,9 @@ class UnknownParser(ElementParser):
 
     element_class = Unknown
 
-    def check_name(self, context, name, extra):
+    def parse_name(self, context, arguments):
         # Allow any name
-        return name
+        arguments['name'] = self.name_parser.parse(context).match[1]
 
 
 #=============================================================================
@@ -59,12 +59,12 @@ class ReferenceParser(ElementParser):
     allow_children = False
     element_class = Reference
 
-    def check_arguments(self, context, arguments, extra):
-        var_name = arguments.get('var', 0)
+    def parse_arguments(self, context, arguments):
+        args = self.arguments_parser.parse(context)
+        var_name = args.get('var', 0)
         if not var_name:
             raise NoMatch
-        extra['var_name'] = var_name
-        return arguments
+        arguments['var_name'] = var_name
 
 
 #=============================================================================
@@ -96,17 +96,16 @@ class DefineParser(ElementParser):
     names = ['def']
     element_class = Define
 
-    def check_arguments(self, context, arguments, extra):
-        var_name = arguments.get('var', 0)
+    def parse_arguments(self, context, arguments):
+        args = self.arguments_parser.parse(context)
+        var_name = args.get('var', 0)
         if not var_name:
             raise NoMatch
-        extra['var_name'] = var_name
-        return arguments
+        arguments['var_name'] = var_name
 
-    def check_children(self, context, children, extra):
-        for child in children:
-            if not isinstance(child, (Text, Reference)):
-                raise NoMatch
+    def parse_children(self, context, arguments):
+        children = super().parse_children(context, arguments)
+        arguments['children'] = [child for child in arguments['children'] if not isinstance(child, (Text, Reference))]
         return children
 
 
@@ -134,12 +133,12 @@ class IncrementParser(ElementParser):
     element_class = Increment
     allow_children = False
 
-    def check_arguments(self, context, arguments, extra):
-        var_name = arguments.get('var', 0)
+    def parse_arguments(self, context, arguments):
+        args = self.arguments_parser.parse(context)
+        var_name = args.get('var', 0)
         if not var_name:
             raise NoMatch
-        extra['var_name'] = var_name
-        return arguments
+        arguments['var_name'] = var_name
 
 
 #=============================================================================
@@ -200,9 +199,9 @@ class SectionParser(ElementParser):
     names = ['section', 's']
     element_class = Section
 
-    def check_arguments(self, context, arguments, extra):
-        extra['start_num'] = arguments.get_int('start')
-        return arguments
+    def parse_arguments(self, context, arguments):
+        args = self.arguments_parser.parse(context)
+        arguments['start_num'] = args.get_int('start')
 
 
 
@@ -248,10 +247,10 @@ class HeadingParser(ElementParser):
     names = ['h']
     element_class = Heading
 
-    def check_arguments(self, context, arguments, extra):
-        extra['level'] = arguments.get_int('level', 0)
-        extra['show_numbers'] = arguments.get_bool('numbers', default=True)
-        return arguments
+    def parse_arguments(self, context, arguments):
+        args = self.arguments_parser.parse(context)
+        arguments['level'] = args.get_int('level', 0)
+        arguments['show_numbers'] = args.get_bool('numbers', default=True)
 
 
 #=============================================================================
@@ -295,13 +294,10 @@ class ListParser(ElementParser):
     names = ['list', 'l']
     element_class = List
 
-    def check_arguments(self, context, arguments, extra):
-        style = arguments.get('style', pos=0)
-        if not style in list_styles:
-            style = '.'
-        extra['style'] = style
-        extra['start_num'] = arguments.get_int('start', pos=None, default=1, invalid=1)
-        return arguments
+    def parse_arguments(self, context, arguments):
+        args = self.arguments_parser.parse(context)
+        arguments['style'] = list_styles.get(args.get('style', pos=0), '.')
+        arguments['start_num'] = args.get_int('start', pos=None, default=1, invalid=1)
 
 
 #=============================================================================
@@ -352,12 +348,12 @@ class LinkParser(ElementParser):
     names = ['link']
     element_class = Link
 
-    def check_arguments(self, context, arguments, extra):
-        url = arguments.get('url', 0)
+    def parse_arguments(self, context, arguments):
+        args = self.arguments_parser.parse(context)
+        url = args.get('url', 0)
         if not url:
             raise NoMatch
-        extra['url'] = url
-        return arguments
+        arguments['url'] = url
 
 
 #=============================================================================
@@ -390,14 +386,15 @@ class ParagraphBreakParser(ElementParser):
     names = ['p']
     element_class = ParagraphBreak
 
+    from .core import Paragraph
+
     def parse1(self, context):
         # A {p} element without children is a paragraph break, which is used to
         # divide text into paragraphs. If the {p} element has children, though,
         # we should place them inside a regular Paragraph element.
-        from .core import Paragraph
         chunk = super().parse1(context)
         if chunk.children:
-            return Paragraph(chunk.src, chunk.start_pos, chunk.end_pos, chunk.children)
+            return self.Paragraph(chunk.src, chunk.start_pos, chunk.end_pos, chunk.children)
         return chunk
 
 
@@ -436,17 +433,8 @@ class CodeParser(ElementParser):
     names = ['code']
     element_class = Code
 
-    def get_child_parser(self, context):
-        # All elements must descend from Text
-        return Many(
-            Any(
-                VerbatimParser(),
-                TextParser(),
-                NonCloseCharParser(),
-            )
-        )
-
-    def check_children(self, context, children, extra):
+    def parse_children(self, context, arguments):
+        children = super().parse_children(context, arguments)
         # Remove leading and trailing empty lines
         if children:
             text = ''
@@ -465,6 +453,16 @@ class CodeParser(ElementParser):
                 del lines[-1]
             return [Text(context.src, start_pos, end_pos, '\n'.join(lines))]
         return children
+
+    def get_child_parser(self, context):
+        # All elements must descend from Text
+        return Many(
+            Any(
+                VerbatimParser(),
+                TextParser(),
+                NonCloseCharParser(),
+            )
+        )
 
 
 #=============================================================================
@@ -500,12 +498,13 @@ class FloatParser(ElementParser):
     names = ['float']
     element_class = Float
 
-    def check_arguments(self, context, arguments, extra):
-        align = arguments.get('align', 0, default='l')
+    def parse_arguments(self, context, arguments):
+        args = self.arguments_parser.parse(context)
+        align = args.get('align', 0, default='l')
         if not align in float_styles:
             raise NoMatch
-        extra['align'] = align
-        extra['clear'] = arguments.get_bool('clear')
+        arguments['align'] = align
+        arguments['clear'] = arguments.get_bool('clear')
 
 
 #=============================================================================
@@ -545,10 +544,11 @@ class BlockParser(ElementParser):
     names = ['block']
     element_class = Block
 
-    def check_arguments(self, context, arguments, extra):
-        align = arguments.get('align', 0)
+    def parse_arguments(self, context, arguments):
+        args = self.arguments_parser.parse(context)
+        align = args.get('align', 0)
         if not align in block_align_styles:
             raise NoMatch
-        extra['align'] = align
+        arguments['align'] = align
 
 

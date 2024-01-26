@@ -24,9 +24,15 @@ table_border_classes = {
 }
 
 table_align_classes = {
-    '<': ('at', 'al'),
-    '=': ('am', 'ac'),
-    '>': ('ab', 'ar'),
+    '1': ('ab', 'al'),
+    '2': ('ab', 'ac'),
+    '3': ('ab', 'ar'),
+    '4': ('am', 'al'),
+    '5': ('am', 'ac'),
+    '6': ('am', 'ar'),
+    '7': ('at', 'al'),
+    '8': ('at', 'ac'),
+    '9': ('at', 'ar'),
 }
 
 def expand_format_str(s, count):
@@ -95,8 +101,7 @@ class TableFormats:
     def __init__(self):
         self.row_borders = _Formats()
         self.col_borders = _Formats()
-        self.row_align = _Formats()
-        self.col_align = _Formats()
+        self.align = _Formats()
 
 
 class TableTextParser(Parser):
@@ -123,8 +128,8 @@ class TableTextParser(Parser):
 
 class TableCaption(Element):
 
-    def __init__(self, src, start_pos, end_pos, children, name=None, arguments=None, show_numbers=None, visible=None):
-        super().__init__(src, start_pos, end_pos, children, name=name, arguments=arguments)
+    def __init__(self, src, start_pos, end_pos, show_numbers=None, visible=None, **arguments):
+        super().__init__(src, start_pos, end_pos, **arguments)
         self.show_numbers = True if show_numbers is None else show_numbers
         self.visible = True if visible is None else visible
 
@@ -154,7 +159,7 @@ class _CaptionShortParser(Parser):
         try:
             start_pos = context.pos
             children = self.get_child_parser(context).parse(context).children
-            return TableCaption(context.src, start_pos, context.pos, children)
+            return TableCaption(context.src, start_pos, context.pos, children=children)
         finally:
             context.pop()
 
@@ -175,9 +180,9 @@ class _CaptionElementParser(ElementParser):
     names = ['caption']
     element_class = TableCaption
 
-    def check_arguments(self, context, arguments, extra):
-        extra['show_numbers'] = arguments.get_bool('numbers')
-        return arguments
+    def parse_arguments(self, context, arguments):
+        args = self.arguments_parser.parse(context)
+        arguments['show_numbers'] = args.get_bool('numbers')
 
 
 class TableCaptionParser(Parser):
@@ -191,19 +196,21 @@ class TableCaptionParser(Parser):
         return self.content_parser.parse(context)
 
 
-
 class _BaseElement(Element):
     """
-    Ancenstor class for tables, sections, rows and cells, handling common
+    Ancenstor class for tables, rowsets, rows and cells, handling common
     formatting features that they all share.
     """
 
-    def __init__(self, src, start_pos, end_pos, children, name=None, arguments=None, row_borders=None, col_borders=None, row_align=None, col_align=None):
-        super().__init__(src, start_pos, end_pos, children, name=name, arguments=arguments)
-        self.row_borders = row_borders or ''
-        self.col_borders = col_borders or ''
-        self.row_align = row_align or ''
-        self.col_align = col_align or ''
+    default_row_borders = ''
+    default_col_borders = ''
+    default_align = ''
+
+    def __init__(self, src, start_pos, end_pos, row_borders=None, col_borders=None, align=None, **arguments):
+        super().__init__(src, start_pos, end_pos, **arguments)
+        self.row_borders = self.default_row_borders if row_borders is None else row_borders
+        self.col_borders = self.default_col_borders if col_borders is None else col_borders
+        self.align = self.default_align if align is None else align
 
     def get_bounds_rect(self):
         raise NotImplementedError
@@ -213,8 +220,7 @@ class _BaseElement(Element):
         row_offset, col_offset, row_count, col_count = self.get_bounds_rect()
         row_borders = fix_borders(expand_format_str(self.row_borders, row_count+1))
         col_borders = fix_borders(expand_format_str(self.col_borders, col_count+1))
-        row_align = fix_aligns(expand_format_str(self.row_align, row_count))
-        col_align = fix_aligns(expand_format_str(self.col_align, col_count))
+        align = fix_aligns(expand_format_str(self.align, col_count))
         for row_index in range(row_count + 1):
             for col_index in range(col_count):
                 formats.row_borders.set_format(row_offset + row_index, col_offset + col_index, row_borders[row_index])
@@ -223,25 +229,11 @@ class _BaseElement(Element):
                 formats.col_borders.set_format(row_offset + row_index, col_offset + col_index, col_borders[col_index])
         for row_index in range(row_count):
             for col_index in range(col_count):
-                formats.row_align.set_format(row_offset + row_index, col_offset + col_index, row_align[row_index])
-        for col_index in range(col_count):
-            for row_index in range(row_count):
-                formats.col_align.set_format(row_offset + row_index, col_offset + col_index, col_align[col_index])
+                formats.align.set_format(row_offset + row_index, col_offset + col_index, align[col_index])
         self.apply_child_formats(formats)
 
     def apply_child_formats(self, formats):
         pass
-
-
-
-class _BaseElementParser(ElementParser):
-
-    def check_arguments(self, context, arguments, extra):
-        extra['row_borders'] = arguments.get('row_borders', default='')
-        extra['col_borders'] = arguments.get('col_borders', default='')
-        extra['row_align'] = arguments.get('row_align', default='')
-        extra['col_align'] = arguments.get('col_align', default='')
-        return arguments
 
 
 class TableCell(_BaseElement):
@@ -249,11 +241,9 @@ class TableCell(_BaseElement):
     paragraphs = True
     html_tag = 'td'
 
-    def __init__(self, src, start_pos, end_pos, children, name=None, arguments=None, \
-            row_borders=None, col_borders=None, col_align=None, row_align=None, \
-            col_span=None, row_span=None, short=False):
-        super().__init__(src, start_pos, end_pos, children, name, arguments, \
-            row_align=row_align, col_align=col_align, row_borders=row_borders, col_borders=col_borders)
+    def __init__(self, src, start_pos, end_pos, row_borders=None, col_borders=None, align=None, \
+            col_span=None, row_span=None, short=False, **arguments):
+        super().__init__(src, start_pos, end_pos, row_borders=row_borders, col_borders=col_borders, align=align, **arguments)
         self.col_span = 1 if col_span is None else col_span
         self.row_span = 1 if row_span is None else row_span
         self.short = short
@@ -276,12 +266,9 @@ class TableCell(_BaseElement):
         format = self.formats.col_borders.get_format(self.row_index, self.col_index + self.col_span)
         if format:
             classes.append(table_border_classes[format][3])
-        format = self.formats.row_align.get_format(self.row_index, self.col_index)
+        format = self.formats.align.get_format(self.row_index, self.col_index)
         if format:
-            classes.append(table_align_classes[format][0])
-        format = self.formats.col_align.get_format(self.row_index, self.col_index)
-        if format:
-            classes.append(table_align_classes[format][1])
+            classes.extend(table_align_classes[format])
         class_attr = self.get_class_attr(context, *classes)
         row_span_attr = f' rowspan="{self.row_span}"' if self.row_span > 1 else ''
         col_span_attr = f' colspan="{self.col_span}"' if self.col_span > 1 else ''
@@ -298,7 +285,7 @@ class _CellShortParser(Parser):
     Finds and returns a TableCell parsed from bar '|' delimited content.
     """
 
-    lead_parser = Regex(r'(\|+)(~*)([_<>=]?)([_<>=]?)')
+    lead_parser = Regex(r'(\|+)(~*)([1-9]?)')
 
     def parse1(self, context):
         start_pos = context.pos
@@ -310,18 +297,16 @@ class _CellShortParser(Parser):
             lead = None
             col_span = 1
             row_span = 1
-            col_align = '_'
-            row_align = '_'
+            align = '_'
         else:
             # Leader present, set cell properties according to leader content
             col_span = len(lead.match[1])
             row_span = max(1, len(lead.match[2]))
-            col_align = lead.match[3] if lead.match[3] else '_'
-            row_align = lead.match[4] if lead.match[4] else '_'
+            align = lead.match[3] if lead.match[3] else '_'
         parse_whitespace(context)
         children = self.get_child_parser(context).parse(context).children
-        return TableCell(context.src, start_pos, context.pos, children, \
-            row_align=row_align, col_align=col_align, col_span=col_span, row_span=row_span, short=True)
+        return TableCell(context.src, start_pos, context.pos, children=children, \
+            align=align, col_span=col_span, row_span=row_span, short=True)
 
     def get_child_parser(self, context):
         if not hasattr(self, '_child_parser'):
@@ -335,7 +320,7 @@ class _CellShortParser(Parser):
         return self._child_parser
 
 
-class _CellElementParser(_BaseElementParser):
+class _CellElementParser(ElementParser):
     """
     Finds and returns a TableCell parsed from a {cell} construct.
     """
@@ -351,19 +336,21 @@ class _CellElementParser(_BaseElementParser):
         self.lead_parser.parse(context)
         return super().parse1(context)
 
-    def parse_children(self, context):
+    def parse_children(self, context, arguments):
         # Contents of a {cell} construct may always contain newlines
         context.push(allow_newline=True)
         try:
-            return super().parse_children(context)
+            return super().parse_children(context, arguments)
         finally:
             context.pop()
 
-    def check_arguments(self, context, arguments, extra):
-        arguments = super().check_arguments(context, arguments, extra)
-        extra['col_span'] = arguments.get_int('col_span')
-        extra['row_span'] = arguments.get_int('row_span')
-        return arguments
+    def parse_arguments(self, context, arguments):
+        args = self.arguments_parser.parse(context)
+        arguments['row_borders'] = args.get('row_borders')
+        arguments['col_borders'] = args.get('col_borders')
+        arguments['align'] = args.get('align')
+        arguments['col_span'] = args.get_int('col_span')
+        arguments['row_span'] = args.get_int('row_span')
 
 
 class TableCellParser(Parser):
@@ -426,12 +413,12 @@ class _RowShortParser(Parser):
         try:
             start_pos = context.pos
             cells = self.cells_parser.parse(context).children
-            return TableRow(context.src, start_pos, context.pos, cells)
+            return TableRow(context.src, start_pos, context.pos, children=cells)
         finally:
             context.pop()
 
 
-class _RowElementParser(_BaseElementParser):
+class _RowElementParser(ElementParser):
     """
     Finds and returns a TableRow expressed as a {row} construct.
     """
@@ -441,7 +428,13 @@ class _RowElementParser(_BaseElementParser):
 
     cells_parser = _CellsParser()
 
-    def parse_children(self, context):
+    def parse_arguments(self, context, arguments):
+        args = self.arguments_parser.parse(context)
+        arguments['row_borders'] = args.get('row_borders')
+        arguments['col_borders'] = args.get('col_borders')
+        arguments['align'] = args.get('align')
+
+    def parse_children(self, context, arguments):
         # {row} elements can contain newline characters in their child cells,
         # since they are not terminated by newline.
         context.push(allow_newline=True)
@@ -462,17 +455,12 @@ class TableRowParser(Parser):
         return self.row_parser.parse(context)
 
 
-class TableSection(_BaseElement):
+class TableRowSet(_BaseElement):
 
-    html_tag = None
+    names = ['rowset']
 
     def render_html(self, context):
-        if not self.children:
-            return ''
-        class_attr = self.get_class_attr(context)
-        html_out = self.render_children_html(context)
-        indent, newline = self.get_whitespace()
-        return f'{indent}<{self.html_tag}{class_attr}>{newline}{html_out}{newline}{indent}</{self.html_tag}>{newline}'
+        return self.render_children_html(context)
 
     def get_bounds_rect(self):
         col_count = 0
@@ -489,17 +477,46 @@ class TableSection(_BaseElement):
             child.apply_formats(formats)
 
 
-class TableSectionBreak(Chunk):
+class TableRowSetParser(ElementParser):
 
-    def __init__(self, src, start_pos, end_pos, row_borders='', col_borders='', row_align='', col_align=''):
-        super().__init__(src, start_pos, end_pos)
-        self.row_borders = row_borders
-        self.col_borders = col_borders
-        self.row_align = row_align
-        self.col_align = col_align
+    names = ['rowset']
+    element_class = TableRowSet
+
+    child_parser = Many(
+        Any(
+            TableRowParser(),
+            all_whitespace_parser,
+        )
+    )
+
+    def get_child_parser(self, context):
+        return self.child_parser
+
+    def parse_arguments(self, context, arguments):
+        args = self.arguments_parser.parse(context)
+        arguments['row_borders'] = args.get('row_borders')
+        arguments['col_borders'] = args.get('col_borders')
+        arguments['align'] = args.get('align')
+
+    def parse_children(self, context, arguments):
+        children = super().parse_children(context, arguments)
+        return [child for child in children if isinstance(child, TableRow)]
 
 
-class TableSectionBreakParser(Parser):
+class TableRowSetBreak(Chunk):
+
+    default_row_borders = ''
+    default_col_borders = ''
+    default_align = ''
+
+    def __init__(self, src, start_pos, end_pos, row_borders='', col_borders='', align='', **arguments):
+        super().__init__(src, start_pos, end_pos, **arguments)
+        self.row_borders = self.default_row_borders if row_borders is None else row_borders
+        self.col_borders = self.default_col_borders if col_borders is None else col_borders
+        self.align = self.default_align if align is None else align
+
+
+class TableRowSetBreakParser(Parser):
 
     all_parser = Regex(r'\|?-+([^\s\|-]*)[^\S\n-]*-*[^\S\n]*\|?[^\S\n]*(\n|$)')
 
@@ -507,24 +524,49 @@ class TableSectionBreakParser(Parser):
         start_pos = context.pos
         lead = self.all_parser.parse(context).match[1]
         args = lead.split(',')
-        args += [''] * (4 - len(args))
-        return TableSectionBreak(context.src, start_pos, context.pos,
+        args += [''] * (3 - len(args))
+        return TableRowSetBreak(context.src, start_pos, context.pos,
             row_borders=args[0],
             col_borders=args[1],
-            row_align=args[2],
-            col_align=args[3],
+            align=args[2],
         )
+
+
+class _Section(Element):
+
+    def render_html(self, context):
+        class_attr = self.get_class_attr(context)
+        html_out = self.render_children_html(context)
+        indent, newline = self.get_whitespace()
+        return f'{indent}<{self.html_tag}{class_attr}>{newline}{html_out}{newline}{indent}</{self.html_tag}>{newline}'
+
+
+class TableHead(_Section):
+
+    html_tag = 'thead'
+
+
+class TableBody(_Section):
+
+    html_tag = 'tbody'
+
+
+class TableFoot(_Section):
+
+    html_tag = 'tfoot'
 
 
 class Table(_BaseElement):
 
-    def __init__(self, src, start_pos, end_pos, children, name=None, arguments=None, \
-            show_caption=None, show_numbers=None, row_borders=None, col_borders=None, \
-            row_align=None, col_align=None):
-        super().__init__(src, start_pos, end_pos, children, name, arguments, \
-            row_borders=row_borders, col_borders=col_borders, row_align=row_align, col_align=col_align)
+    default_row_borders = '1*1'
+    default_col_borders = '1*1'
+
+    def __init__(self, src, start_pos, end_pos, show_caption=None, show_numbers=None, row_borders=None, col_borders=None, align=None, head=None, foot=None, **arguments):
+        super().__init__(src, start_pos, end_pos, row_borders=row_borders, col_borders=col_borders, align=align, **arguments)
         self.show_caption = True if show_caption is None else show_caption
         self.show_numbers = True if show_numbers is None else show_numbers
+        self.head_count = 0 if head is None else head
+        self.foot_count = 0 if foot is None else foot
 
     def before_child_setup(self, context):
         if self.show_caption and self.show_numbers:
@@ -537,8 +579,8 @@ class Table(_BaseElement):
     def get_bounds_rect(self):
         col_count = 0
         row_count = 0
-        for section in self.sections:
-            _, _, h, w = section.get_bounds_rect()
+        for rowset in self.rowsets:
+            _, _, h, w = rowset.get_bounds_rect()
             row_count += h
             if w > col_count:
                 col_count = w
@@ -546,10 +588,10 @@ class Table(_BaseElement):
 
     def apply_spans(self):
 
-        def apply_row_span(section):
-            row_count = len(section.children)
+        def apply_row_span(rowset):
+            row_count = len(rowset.children)
             supplements = [[] for n in range(row_count)]
-            for row_index, row in enumerate(section.children):
+            for row_index, row in enumerate(rowset.children):
                 for cell in row.children:
                     # Check that there are enough rows to accomodate a cell's
                     # requested vertical extension, and correct row_span if
@@ -562,7 +604,7 @@ class Table(_BaseElement):
                             supplements[sup_index].append(cell)
             return supplements
 
-        def apply_col_span(section, supplements):
+        def apply_col_span(rowset, supplements):
 
             def get_available(occupied, index):
                 for start_index, end_index in occupied:
@@ -574,7 +616,7 @@ class Table(_BaseElement):
 
             # Build an array of cells to be manipulated without modifiying the
             # underlying hierarchy.
-            rows = [row.children for row in section.children]
+            rows = [row.children for row in rowset.children]
             # Find the length of the longest row. We'll try not to allow cells
             # to extend horizontally beyond this width.
             col_count = 0
@@ -603,9 +645,9 @@ class Table(_BaseElement):
                     col_index += cell.col_span
 
         row_index = 0
-        for section in self.sections:
-            section.row_index = row_index
-            for row in section.children:
+        for rowset in self.rowsets:
+            rowset.row_index = row_index
+            for row in rowset.children:
                 row.row_index = row_index
                 col_index = 0
                 for cell in row.children:
@@ -613,12 +655,45 @@ class Table(_BaseElement):
                     cell.col_index = col_index
                     col_index += cell.col_span
                 row_index += 1
-            supplements = apply_row_span(section)
-            apply_col_span(section, supplements)
+            supplements = apply_row_span(rowset)
+            apply_col_span(rowset, supplements)
 
     def apply_child_formats(self, formats):
-        for section in self.sections:
-            section.apply_formats(formats)
+        for rowset in self.rowsets:
+            rowset.apply_formats(formats)
+
+    def apply_structure(self):
+        children = []
+        if self.caption:
+            children.append(self.caption)
+        # Make a copy of rowsets list that can be modified without affecting
+        # the original
+        rowsets = [s for s in self.rowsets]
+        head_rowsets = []
+        count = self.head_count
+        while count > 0 and rowsets:
+            head_rowsets.append(rowsets[0])
+            del rowsets[0]
+            count -= 1
+        foot_rowsets = []
+        count = self.foot_count
+        while count > 0 and rowsets:
+            foot_rowsets.insert(0, rowsets[-1])
+            del rowsets[-1]
+            count -= 1
+        if head_rowsets:
+            first = head_rowsets[0]
+            last = head_rowsets[-1]
+            children.append(TableHead(first.src, first.start_pos, last.end_pos, children=head_rowsets))
+        if rowsets:
+            first = rowsets[0]
+            last = rowsets[-1]
+            children.append(TableBody(first.src, first.start_pos, last.end_pos, children=rowsets))
+        if foot_rowsets:
+            first = foot_rowsets[0]
+            last = foot_rowsets[-1]
+            children.append(TableFoot(first.src, first.start_pos, last.end_pos, children=foot_rowsets))
+        self.children = children
 
     def render_html(self, context):
         class_attr = self.get_class_attr(context)
@@ -634,8 +709,9 @@ class TableParser(ElementParser):
 
     child_parser = Many(
         Any(
+            TableRowSetParser(),
+            TableRowSetBreakParser(),
             TableCaptionParser(),
-            TableSectionBreakParser(),
             TableRowParser(),
             all_whitespace_parser,
         )
@@ -644,43 +720,45 @@ class TableParser(ElementParser):
     def get_child_parser(self, context):
         return self.child_parser
 
-    def check_arguments(self, context, arguments, extra):
-        extra['col_align'] = arguments.get('col_align')
-        extra['row_align'] = arguments.get('row_align')
-        extra['col_borders'] = arguments.get('col_borders')
-        extra['row_borders'] = arguments.get('row_borders')
-        extra['show_caption'] = arguments.get_bool('caption')
-        extra['show_numbers'] = arguments.get_bool('numbers')
-        return arguments
+    def parse_arguments(self, context, arguments):
+        args = self.arguments_parser.parse(context)
+        arguments['row_borders'] = args.get('row_borders')
+        arguments['col_borders'] = args.get('col_borders')
+        arguments['align'] = args.get('align')
+        arguments['show_caption'] = args.get_bool('caption')
+        arguments['show_numbers'] = args.get_bool('numbers')
+        arguments['head'] = args.get_int('head')
+        arguments['foot'] = args.get_int('foot')
 
     def parse2(self, context, chunk):
         captions = []
-        sections = [TableSection(context.src, 0, 0, [])]
+        rowsets = [TableRowSet(context.src, 0, 0, children=[])]
         for child in chunk.children:
             if isinstance(child, TableCaption):
                 captions.append(child)
-            elif isinstance(child, TableSectionBreak):
-                # If current section is empty, then discard it
-                if not sections[-1].children:
-                    del sections[-1]
-                sections.append(TableSection(context.src, child.start_pos, 0, [],
-                    row_align=child.row_align,
-                    col_align=child.col_align,
+            elif isinstance(child, TableRowSetBreak):
+                # If current rowset is empty, then discard it
+                if not rowsets[-1].children:
+                    del rowsets[-1]
+                rowsets.append(TableRowSet(context.src, child.start_pos, 0, children=[],
                     row_borders=child.row_borders,
                     col_borders=child.col_borders,
+                    align=child.align,
                 ))
-            elif isinstance(child, TableSection):
-                # If current section is empty, then discard it
-                if not sections[-1].children:
-                    del sections[-1]
-                sections.append(child)
+            elif isinstance(child, TableRowSet):
+                # If current rowset is empty, then discard it
+                if not rowsets[-1].children:
+                    del rowsets[-1]
+                rowsets.append(child)
+                # Start a new rowset
+                rowsets.append(TableRowSet(context.src, context.pos, 0, children=[]))
             elif isinstance(child, TableRow):
-                sections[-1].children.append(child)
-        # If current section is empty, then discard it
-        if sections and not sections[-1].children:
-            del sections[-1]
-        # If all sections are empty, table is invalid
-        if sum(len(s.children) for s in sections) == 0:
+                rowsets[-1].children.append(child)
+        # If current rowset is empty, then discard it
+        if rowsets and not rowsets[-1].children:
+            del rowsets[-1]
+        # If all rowsets are empty, table is invalid
+        if sum(len(s.children) for s in rowsets) == 0:
             raise NoMatch
         # Concatenate captions if necessary
         if len(captions) > 1:
@@ -689,9 +767,9 @@ class TableParser(ElementParser):
                 children.extend(caption.children)
             captions[-1].children = children
         chunk.caption = None if not captions else captions[-1]
-        chunk.sections = sections
-        chunk.children = captions[-1:] + sections
+        chunk.rowsets = rowsets
         chunk.apply_spans()
         chunk.apply_formats(TableFormats())
+        chunk.apply_structure()
         return chunk
     

@@ -254,6 +254,9 @@ class Arguments:
             return default
         return bool_arguments.get(value.lower(), invalid)
 
+    def get_as_dict(self):
+        return {name: values[-1] if values else None for name, values in self.by_name}
+
     def __str__(self):
         args = [str(value) for value in self.by_pos]
         args.extend([f'{name}={value}' for name, value in self.by_name.items()])
@@ -329,10 +332,10 @@ class Element(BaseElement):
 
     inline = False
 
-    def __init__(self, src, start_pos, end_pos, children, name=None, arguments=None):
+    def __init__(self, src, start_pos, end_pos, children=None, name=None, arguments=None):
         super().__init__(src, start_pos, end_pos, children)
         self.name = name
-        self.arguments = arguments or Arguments()
+        self.arguments = arguments
 
     def __str__(self):
         return f"{self.__class__.__name__}[{self.start_pos}:{self.end_pos}]{self.arguments}"
@@ -352,27 +355,41 @@ class ElementParser(PartsParser):
     arguments_parser = ArgumentsParser()
 
     def parse1(self, context):
-        extra = {}
         start_pos = context.pos
         self.open_parser.parse(context)
-        name = self.name_parser.parse(context).match[1]
-        name = self.check_name(context, name, extra)
-        extra['name'] = name
-        arguments = self.arguments_parser.parse(context)
-        arguments = self.check_arguments(context, arguments, extra)
-        extra['arguments'] = arguments
+        arguments = {}
+        name = self.parse_name(context, arguments)
+        arguments['name'] = name
+        arguments = self.parse_arguments(context, arguments) or arguments
         try:
            self.split_parser.parse(context)
         except NoMatch:
             children = []
         else:
-            children = self.parse_children(context)
-        children = self.check_children(context, children, extra)
+            children = self.parse_children(context, arguments)
+        arguments['children'] = children
         self.close_parser.parse(context)
-        return self.make_element(context.src, start_pos, context.pos, children, **extra)
+        return self.make_element(context.src, start_pos, context.pos, **arguments)
 
-    def parse_children(self, context):
-        return self.get_child_parser(context).parse(context).children
+    def parse_name(self, context, arguments):
+        name = self.name_parser.parse(context).match[1]
+        if not hasattr(self, '_names'):
+            self._names = self.get_names()
+        n = name if self.name_case_sensitive else name.lower()
+        if not n in self._names:
+            raise NoMatch
+        return name
+
+    def parse_arguments(self, context, arguments):
+        args_dict = self.arguments_parser.parse(context).get_as_dict()
+        arguments.update(self.arguments_parser.parse(context).get_as_dict())
+        return arguments
+
+    def parse_children(self, context, arguments):
+        children = self.get_child_parser(context).parse(context).children
+        if children and not self.allow_children:
+            raise NoMatch
+        return children
 
     def get_child_parser(self, context):
         if not hasattr(self, '_child_parser'):
@@ -393,24 +410,8 @@ class ElementParser(PartsParser):
             names = [name.lower() for name in self.names]
         return names
 
-    def check_name(self, context, name, extra):
-        if not hasattr(self, '_names'):
-            self._names = self.get_names()
-        n = name if self.name_case_sensitive else name.lower()
-        if not n in self._names:
-            raise NoMatch
-        return name
-
-    def check_arguments(self, context, arguments, extra):
-        return arguments
-
-    def check_children(self, context, children, extra):
-        if children and not self.allow_children:
-            raise NoMatch
-        return children
-
-    def make_element(self, src, start_pos, end_pos, children, **extra):
-        return self.element_class(src, start_pos, end_pos, children, **extra)
+    def make_element(self, src, start_pos, end_pos, **arguments):
+        return self.element_class(src, start_pos, end_pos, **arguments)
 
 
 class Document(BaseElement):
