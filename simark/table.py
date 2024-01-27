@@ -135,7 +135,7 @@ class TableCaption(Element):
         self.visible = True if visible is None else visible
 
     def setup_enter(self, context):
-        self.numbers = context.table_numbers
+        self.numbers = context.table_counter.text
 
     def render_html(self, context):
         if not self.visible:
@@ -586,11 +586,11 @@ class Table(_BaseElement):
 
     def setup_enter(self, context):
         if self.show_caption and self.show_numbers:
-            context.begin_table()
+            context.table_counter.enter()
 
     def setup_exit(self, context):
         if self.show_caption and self.show_numbers:
-            context.end_table()
+            context.table_counter.exit()
 
     def get_bounds_rect(self):
         col_count = 0

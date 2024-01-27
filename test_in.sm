@@ -1,3 +1,32 @@
+{list style=i|
+    {item|Here}
+    {item|There
+        {list style=a|
+            {item|apple}
+            {item|pear}
+            {item|orange}
+        }
+    }
+    {item|Everywhere}
+    {item|Nowhere}
+}
+
+{list style=1|
+    {item|Here}
+    {item|There
+        {list|
+            {item|apple}
+            {item|pear}
+            {item|orange}
+        }
+    }
+    {item|Everywhere}
+    {item|Nowhere}
+}
+
+
+
+
 {h|title}
 {section|
     {h|Hello}
@@ -8,9 +37,8 @@
         {h|Cats}
     }
 }
-{section|
+{section|{section|
     {h|goodbye}
-}
 
 {table head=1 foot=10|
     |---------------------------------------------------------------|
@@ -26,3 +54,40 @@
     |---------------------------------------------------------------|
     Fruits and colours {b|and} other good things
 }
+
+{table head=1 foot=10|
+    |---------------------------------------------------------------|
+    |     1{l}x     |      2        |        3      |       4       |
+    |---------------------------------------------------------------|
+    |      A        ||~~            B               |       C       |
+    |  {i|green}                                    |     olive     |
+    |    apple      |     grape     |      kiwi     |     lemon     |
+    |---------------------------------------------------------------|
+    |    earth      |  {cell|{i|mars}}  |     pluto     |     mercury   |
+    |---------------------------------------------------------------|
+    |   w      |  x  |     y     |     z   |
+    |---------------------------------------------------------------|
+    More fruits and colours {b|and} other good things
+}
+
+{section|
+
+{table head=1 foot=10|
+    |---------------------------------------------------------------|
+    |     1{l}x     |      2        |        3      |       4       |
+    |---------------------------------------------------------------|
+    |      A        ||~~            B               |       C       |
+    |  {i|green}                                    |     olive     |
+    |    apple      |     grape     |      kiwi     |     lemon     |
+    |---------------------------------------------------------------|
+    |    earth      |  {cell|{i|mars}}  |     pluto     |     mercury   |
+    |---------------------------------------------------------------|
+    |   w      |  x  |     y     |     z   |
+    |---------------------------------------------------------------|
+    More fruits and colours {b|and} other good things
+}
+
+}
+
+
+}}

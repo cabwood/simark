@@ -1,7 +1,7 @@
 import re
 import html
 from itertools import permutations
-from .parse import NoMatch, Many, Any
+from .parse import NoMatch, Many, Any, Regex
 from .core import ElementParser, Element, TextParser, Text, VerbatimParser, NonCloseCharParser
 from .entities import plain_entities, html_entities
 
@@ -182,10 +182,10 @@ class Section(Element):
         self.start_num = start_num
 
     def setup_enter(self, context):
-        context.section.enter(start_num=self.start_num)
+        context.section_counter.enter(start_num=self.start_num)
 
     def setup_exit(self, context):
-        context.section.exit()
+        context.section_counter.exit()
 
     def render_html(self, context):
         html_out = self.render_children_html(context)
@@ -222,7 +222,7 @@ class Heading(Element):
 
     def setup_enter(self, context):
         if self.level is None:
-            self.level = context.section.level
+            self.level = context.section_counter.level
         if self.level == 0:
             # No numbering at top level
             self.numbers = ''
@@ -230,7 +230,7 @@ class Heading(Element):
             show_nums = self.show_numbers
             if show_nums is None:
                 show_nums = context.show_heading_numbers
-            self.numbers = context.section.text + ' ' if show_nums else ''
+            self.numbers = context.section_counter.text + ' ' if show_nums else ''
 
     def render_html(self, context):
         # Clamp level to between 1 and 6, corresponding to available HTML <h?> options
@@ -261,6 +261,32 @@ class HeadingParser(ElementParser):
 #=============================================================================
 
 
+class ListItem(Element):
+
+    paragraphs = True
+
+    def setup_enter(self, context):
+        self.numbers = context.list_counter.text
+
+    def setup_exit(self, context):
+        context.list_counter.inc()
+
+    def render_html(self, context):
+        class_attr = self.get_class_attr(context)
+        html_out = self.render_children_html(context)
+        indent, newline = self.get_whitespace(context)
+        return f'{indent}<li{class_attr}>{newline}{html_out}{newline}{indent}</li>{newline}'
+
+
+class ListItemParser(ElementParser):
+
+    names = ['item']
+    element_class = ListItem
+
+
+#=============================================================================
+
+
 list_styles = {
     '1': 'list-style-type: decimal;',
     'a': 'list-style-type: lower-alpha;',
@@ -275,18 +301,18 @@ class List(Element):
 
     def __init__(self, src, start_pos, end_pos, children, name=None, arguments=None, style=None, start_num=None):
         super().__init__(src, start_pos, end_pos, children, name, arguments)
-        self.style = style
+        self.style = style if style in list_styles else '.'
         self.start_num = start_num
 
     def setup_enter(self, context):
-        context.begin_list(self.style, start_num=self.start_num)
+        context.list_counter.enter(self.style, start_num=self.start_num)
 
     def setup_exit(self, context):
-        context.end_list()
+        context.list_counter.exit()
 
     def render_html(self, context):
         class_attr = self.get_class_attr(context)
-        style_attr = f' style="{list_styles.get(self.style, list_styles["."])}"'
+        style_attr = f' style="{list_styles[self.style]}"'
         start_attr = '' if self.start_num == 1 else f' start="{self.start_num}"'
         tag = 'ol' if self.style in '1aAiI' else 'ul'
         html_out = self.render_children_html(context)
@@ -296,39 +322,23 @@ class List(Element):
 
 class ListParser(ElementParser):
 
-    names = ['list', 'l']
+    names = ['list']
     element_class = List
+    child_parser = Many(
+        Any(
+            ListItemParser(),
+            Regex(r'\s*'),
+        )
+    )
 
     def parse_arguments(self, context, arguments):
         args = self.arguments_parser.parse(context)
-        arguments['style'] = list_styles.get(args.get('style', pos=0), '.')
+        arguments['style'] = args.get('style')
         arguments['start_num'] = args.get_int('start', pos=None, default=1, invalid=1)
 
-
-#=============================================================================
-
-
-class ListItem(Element):
-
-    paragraphs = True
-
-    def setup_enter(self, context):
-        context.inc_list()
-
-    def setup_enter(self, context):
-        self.numbers = context.list_numbers
-
-    def render_html(self, context):
-        class_attr = self.get_class_attr(context)
-        html_out = self.render_children_html(context)
-        indent, newline = self.get_whitespace(context)
-        return f'{indent}<li{class_attr}>{newline}{html_out}{newline}{indent}</li>{newline}'
-
-
-class ListItemParser(ElementParser):
-
-    names = ['listitem', 'li']
-    element_class = ListItem
+    def parse_children(self, context, arguments):
+        children = self.child_parser.parse(context).children
+        return [child for child in children if isinstance(child, ListItem)]
 
 
 #=============================================================================

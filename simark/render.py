@@ -99,11 +99,14 @@ class EnvVar(ContextVar):
 
 class SectionCounter(Stack):
 
-    separator = '.'
+    default_separator = '.'
 
     def __init__(self, context):
         self.context = context
-        super().__init__('section', level=0, number=None, child_number=1)
+        super().__init__('section', level=0, child_number=1)
+
+    def get_separator(self):
+        return self.context.get_stack('main').get('section_separator') or self.default_separator
 
     @property
     def level(self):
@@ -114,7 +117,7 @@ class SectionCounter(Stack):
         return self.get('number')
 
     def get_text(self):
-        return self.separator.join(str(n) for n in self.numbers)
+        return self.get_separator().join(str(n) for n in self.numbers)
 
     text = property(get_text)
 
@@ -140,39 +143,120 @@ class SectionCounter(Stack):
         self.child_number = self.pop()['number'] + 1
 
 
-class TableCounter:
+class CompoundCounter:
 
-    separator = '.'
+    default_separator = '-'
     max_level = 2
 
     def __init__(self, context):
         self.context = context
         self.reset()
 
-    def reset(self):
-        self.counters = [1]
-        self.section_numbers = []
+    def get_separator(self):
+        return self.default_separator
+
+    @property
+    def level(self):
+        # Level is determined by current section level, and capped by max_level
+        return min(self.context.section_counter.level + 1, self.max_level)
 
     @property
     def numbers(self):
-        return self.section_numbers + [self.counters[-1]]
+        section_numbers = self.context.section_counter.numbers[0:self.level - 1]
+        return section_numbers + [self.counters[-1]]
 
     def get_text(self):
-        return self.separator.join(str(n) for n in self.numbers)
+        return self.get_separator().join(str(n) for n in self.numbers)
 
     text = property(get_text)
 
-    def enter(self, start_num=None):
-        section_numbers = self.context.section.numbers
-        level = min(len(section_numbers) + 1, self.max_level)
-        self.section_numbers = section_numbers[][0:level-1]
-        self.counters = self.counters[0:level]
+    def resize_counters(self):
+        # Resize the counter list to match the current section level
+        level = self.level
         while len(self.counters) < level:
             self.counters.append(1)
-        self.counters[-1] = 1 if start_num is None else start_num
+        if len(self.counters) > level:
+            self.counters = self.counters[0:level]
+
+    def reset(self):
+        self.counters = [1]
+
+    def enter(self):
+        self.resize_counters()
 
     def exit(self):
         self.counters[-1] += 1
+
+    def inc(self):
+        self.resize_counters()
+        self.counters[-1] += 1
+
+
+class TableCounter(CompoundCounter):
+
+    def get_separator(self):
+        return self.context.get_stack('main').get('table_separator') or self.default_separator
+
+
+class FigureCounter(CompoundCounter):
+
+    def get_separator(self):
+        return self.context.get_stack('main').get('figure_separator') or self.default_separator
+
+
+class ListCounter(Stack):
+
+    default_separator = '.'
+
+    def __init__(self, context):
+        self.context = context
+        super().__init__('list', level=0)
+
+    def get_separator(self):
+        return self.context.get_stack('main').get('list_separator') or self.default_separator
+
+    @property
+    def level(self):
+        return self.get('level')
+
+    @property
+    def number(self):
+        return self.get('number')
+    @number.setter
+    def number(self, value):
+        self.set('number', value)
+
+    def get_text(self):
+        items = zip([list_style_funcs[style] for style in self.styles], self.numbers)
+        return self.get_separator().join(f(n) for f, n in items)
+
+    text = property(get_text)
+
+    @property
+    def numbers(self):
+        # Top level has no number, so don't include it
+        return [item['number'] for item in self.items[1:]]
+
+    @property
+    def style(self):
+        return self.get('style')
+
+    @property
+    def styles(self):
+        # Top level has no style, so don't include it
+        return [item['style'] for item in self.items[1:]]
+
+    def enter(self, style, start_num=None):
+        if start_num is None:
+            start_num = 1
+        self.push(number=start_num, style=style, level=self.level+1)
+
+    def exit(self):
+        # Next child will be numbered consecutive to this one
+        self.child_number = self.pop()['number'] + 1
+
+    def inc(self):
+        self.number += 1
 
 
 class RenderContext(BaseContext):
@@ -185,21 +269,22 @@ class RenderContext(BaseContext):
         super().__init__(**kwargs)
         self.format = format
         self.html_class_prefix = html_class_prefix
-        self.section = SectionCounter(self)
-        self.table = TableCounter(self)
+        self.section_counter = SectionCounter(self)
+        self.table_counter = TableCounter(self)
+        self.figure_counter = FigureCounter(self)
+        self.list_counter = ListCounter(self)
         self.vars = {
-            'section': EnvVar(self.section.get_text, None, None),
-            'list': EnvVar(self.get_list_numbers, None, self.inc_list),
-            'table': EnvVar(self.get_table_numbers, None, self.inc_table),
-            'figure': EnvVar(self.get_figure_numbers, None, self.inc_figure),
+            'section': EnvVar(self.section_counter.get_text, None, None),
+            'table': EnvVar(self.table_counter.get_text, None, self.table_counter.inc),
+            'figure': EnvVar(self.figure_counter.get_text, None, self.table_counter.inc),
+            'list': EnvVar(self.list_counter.get_text, None, self.list_counter.inc),
         }
-        self.reset_counters()
 
     def reset_counters(self):
-        self.section.reset()
-        self.table.reset()
-
-    #=========================================================================
+        self.section_counter.reset()
+        self.table_counter.reset()
+        self.figure_counter.reset()
+        self.list_counter.reset()
 
     def get_var(self, name, default=''):
         var = self.vars.get(name)
@@ -216,96 +301,6 @@ class RenderContext(BaseContext):
         var = self.vars.get(name)
         if var:
             var.inc_value()
-
-    #=========================================================================
-
-    def reset_list(self):
-        self.list_counts = []
-        self.list_styles = []
-
-    def begin_list(self, style, start_num=1):
-        self.list_counts.append(start_num)
-        self.list_styles.append(style)
-        
-    def end_list(self):
-        if self.list_counts:
-            del self.list_counts[-1]
-            del self.list_styles[-1]
-
-    def inc_list(self):
-        if self.list_counts:
-            self.list_counts[-1] += 1
-
-    def get_list_numbers(self):
-        return '.'.join(list_style_funcs[style](count) for count, style in zip(self.list_counts, self.list_styles))
-
-    @property
-    def list_numbers(self):
-        return self.get_list_numbers()
-
-    #=========================================================================
-
-    def reset_table(self):
-        self.table_counts = [0, 0]
-
-    def begin_table(self, start_num=None):
-        if start_num is not None:
-            level = self.get_section_level()
-            if level > 1:
-                level = 1
-            self.table_counts[level] = start_num
-        else:
-            self.inc_table()
-
-    def end_table(self):
-        pass
-
-    def inc_table(self):
-        level = self.section.level
-        if level > 1:
-            level = 1
-        self.table_counts[level] += 1
-
-    def get_table_numbers(self):
-        if self.section.level == 0:
-            return str(self.table_counts[0])
-        return f'{self.section_counts[0]}.{self.table_counts[1]}'
-
-    @property
-    def table_numbers(self):
-        return self.get_table_numbers()
-    
-    #=========================================================================
-
-    def reset_figure(self):
-        self.figure_counts = [0, 0]
-
-    def begin_figure(self, start_num=None):
-        if start_num is not None:
-            level = self.get_section_level()
-            if level > 1:
-                level = 1
-            self.figure_counts[level] = start_num
-        else:
-            self.inc_figure()
-
-    def end_figure(self):
-        pass
-
-    def inc_figure(self):
-        level = self.get_section_level()
-        if level > 1:
-            level = 1
-        self.figure_counts[level] += 1
-
-    def get_figure_numbers(self):
-        if self.section_level == 0:
-            return str(self.figure_counts[0])
-        return f'{self.section_counts[0]}.{self.figure_counts[1]}'
-
-    @property
-    def figure_numbers(self):
-        return self.get_figure_numbers()
 
 
 class RenderMixin:
