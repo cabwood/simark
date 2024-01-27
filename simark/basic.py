@@ -36,7 +36,7 @@ class UnknownParser(ElementParser):
 #=============================================================================
 
 
-class Reference(Element):
+class GetVar(Element):
 
     inline = True
 
@@ -44,20 +44,26 @@ class Reference(Element):
         super().__init__(src, start_pos, end_pos, children, name, arguments)
         self.var_name = var_name
 
+    def evaluate(self, context):
+        return context.get_var(self.var_name)
+
     def setup_enter(self, context):
-        self.var_value = str(context.get_var(self.var_name))
+        self.var_value = self.evaluate(context)
 
     def render_html(self, context):
-        html_out = html.escape(self.var_value)
+        if self.var_value is None:
+            # Another pass, another chance to evaluate
+            self.var_value = self.evaluate(context) or ''
+        html_out = html.escape(str(self.var_value))
         class_attr = self.get_class_attr(context)
         return f'<span{class_attr}>{html_out}</span>' if class_attr else html_out
 
 
-class ReferenceParser(ElementParser):
+class GetVarParser(ElementParser):
 
-    names = ['ref']
+    names = ['get']
     allow_children = False
-    element_class = Reference
+    element_class = GetVar
 
     def parse_arguments(self, context, arguments):
         args = self.arguments_parser.parse(context)
@@ -70,11 +76,11 @@ class ReferenceParser(ElementParser):
 #=============================================================================
 
 
-class Define(Element):
+class SetVar(Element):
 
     inline = True
 
-    def __init__(self, src, start_pos, end_pos, children, name=None, arguments=None, var_name=None):
+    def __init__(self, src, start_pos, end_pos, children=None, name=None, arguments=None, var_name=None):
         super().__init__(src, start_pos, end_pos, children, name, arguments)
         self.var_name = var_name
 
@@ -83,18 +89,26 @@ class Define(Element):
         # plain text content, for variable value.
         value = ''
         for child in self.children:
-            if isinstance(child, (Text, Reference)):
-                value += child.render_plain(context)
+            if isinstance(child, Text):
+                value += child.text
+            elif isinstance(child,GetVar):
+                value += str(child.evaluate(context))
         context.set_var(self.var_name, value)
 
     def render_html(self, context):
         return ''
 
 
-class DefineParser(ElementParser):
+class SetVarParser(ElementParser):
 
-    names = ['def']
-    element_class = Define
+    names = ['set']
+    element_class = SetVar
+    child_parser = Many(
+        Any(
+            TextParser(),
+            GetVarParser(),
+        )
+    )
 
     def parse_arguments(self, context, arguments):
         args = self.arguments_parser.parse(context)
@@ -104,15 +118,13 @@ class DefineParser(ElementParser):
         arguments['var_name'] = var_name
 
     def parse_children(self, context, arguments):
-        children = super().parse_children(context, arguments)
-        arguments['children'] = [child for child in arguments['children'] if not isinstance(child, (Text, Reference))]
-        return children
+        return self.child_parser.parse(context).children
 
 
 #=============================================================================
 
 
-class Increment(Element):
+class IncVar(Element):
 
     inline = True
 
@@ -130,7 +142,7 @@ class Increment(Element):
 class IncrementParser(ElementParser):
 
     names = ['inc']
-    element_class = Increment
+    element_class = IncVar
     allow_children = False
 
     def parse_arguments(self, context, arguments):

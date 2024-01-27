@@ -11,9 +11,9 @@ from .basic import \
     Section, SectionParser, \
     List, ListParser, \
     Link, LinkParser, \
-    Reference, ReferenceParser, \
-    Define, DefineParser, \
-    Increment, IncrementParser, \
+    GetVar, GetVarParser, \
+    SetVar, SetVarParser, \
+    IncVar, IncrementParser, \
     Entity, EntityParser, \
     Code, CodeParser, \
     Block, BlockParser, \

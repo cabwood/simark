@@ -258,7 +258,7 @@ class Arguments:
         return bool_arguments.get(value.lower(), invalid)
 
     def get_as_dict(self):
-        return {name: values[-1] if values else None for name, values in self.by_name}
+        return {name: values[-1] for name, values in self.by_name.items()}
 
     def __str__(self):
         args = [str(value) for value in self.by_pos]

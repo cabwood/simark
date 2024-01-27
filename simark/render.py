@@ -286,9 +286,11 @@ class RenderContext(BaseContext):
         self.figure_counter.reset()
         self.list_counter.reset()
 
-    def get_var(self, name, default=''):
+    def get_var(self, name):
         var = self.vars.get(name)
-        return var.value if var else default
+        if var:
+            return var.value
+        return None
 
     def set_var(self, name, value):
         var = self.vars.get(name)

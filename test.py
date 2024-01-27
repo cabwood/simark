@@ -15,8 +15,8 @@ from simark import \
     SectionParser, \
     ListParser, \
     LinkParser, \
-    ReferenceParser, \
-    DefineParser, \
+    GetVarParser, \
+    SetVarParser, \
     IncrementParser, \
     EntityParser, \
     CodeParser, \
@@ -33,8 +33,8 @@ parsers = [
     SectionParser(),
     ListParser(),
     LinkParser(),
-    ReferenceParser(),
-    DefineParser(),
+    GetVarParser(),
+    SetVarParser(),
     IncrementParser(),
     EntityParser(),
     CodeParser(),
