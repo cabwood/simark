@@ -1,5 +1,15 @@
+{h|title}
 {section|
     {h|Hello}
+    {section start=5|
+        {h|Dogs}
+    }
+    {section|
+        {h|Cats}
+    }
+}
+{section|
+    {h|goodbye}
 }
 
 {table head=1 foot=10|

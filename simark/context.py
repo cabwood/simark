@@ -2,8 +2,11 @@ class Stack:
 
     def __init__(self, name, **kwargs):
         self.name = name
-        # Initial top item constructed from kwargs
-        self.items = [kwargs]
+        self._kwargs = kwargs
+        self.reset()
+
+    def reset(self, **kwargs):
+        self.items = [self._kwargs]
 
     @property
     def top(self):
@@ -28,9 +31,6 @@ class BaseContext:
 
     def __init__(self, **kwargs):
         self.stacks = {'main': Stack('main', **kwargs)}
-
-    def add_stack(self, stack):
-        self.stacks[stack.name] = stack
 
     def get_stack(self, stack_name):
         stack = self.stacks.get(stack_name)

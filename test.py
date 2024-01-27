@@ -45,13 +45,31 @@ parsers = [
     UnknownParser(),
 ]
 
-parser = _RowShortParser()
+# parser = _RowShortParser()
 
-src = """a | b | c """
+# src = """a | b | c """
 
-context = ParseContext(src, parsers=parsers)
+# context = ParseContext(src, parsers=parsers)
 
-chunk = parser.parse(context)
+# chunk = parser.parse(context)
 
-chunk.walk(lambda element, level: print(f"{' '*4*level}{element}"))
+# chunk.walk(lambda element, level: print(f"{' '*4*level}{element}"))
 
+from simark.render import SectionCounter
+s = SectionCounter(None)
+print(s.numbers)
+s.enter(start_num=5)
+print(s.numbers)
+s.enter() ; print(s.numbers) ; s.exit()
+print(s.numbers)
+s.enter() ; print(s.numbers) ; print(s.text) ; s.exit()
+s.enter() ; print(s.numbers) ; s.exit()
+s.enter() ; print(s.numbers) ; s.exit()
+print(s.numbers)
+s.exit()
+print(s.numbers)
+s.enter() ; print(s.numbers)
+s.enter() ; print(s.numbers) ; s.exit()
+s.enter() ; print(s.numbers) ; s.exit()
+s.exit()
+print(s.numbers)

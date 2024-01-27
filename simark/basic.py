@@ -182,10 +182,10 @@ class Section(Element):
         self.start_num = start_num
 
     def setup_enter(self, context):
-        context.get_stack('section').enter()
+        context.section.enter(start_num=self.start_num)
 
     def setup_exit(self, context):
-        context.get_stack('section').exit()
+        context.section.exit()
 
     def render_html(self, context):
         html_out = self.render_children_html(context)
@@ -222,15 +222,15 @@ class Heading(Element):
 
     def setup_enter(self, context):
         if self.level is None:
-            self.level = context.get_stack('section').level
-        # No numbering at top level
+            self.level = context.section.level
         if self.level == 0:
+            # No numbering at top level
             self.numbers = ''
-            return
-        show_nums = self.show_numbers
-        if show_nums is None:
-            show_nums = context.show_heading_numbers
-        self.numbers = context.section_numbers + '. ' if show_nums else ''
+        else:
+            show_nums = self.show_numbers
+            if show_nums is None:
+                show_nums = context.show_heading_numbers
+            self.numbers = context.section.text + ' ' if show_nums else ''
 
     def render_html(self, context):
         # Clamp level to between 1 and 6, corresponding to available HTML <h?> options
