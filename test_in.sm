@@ -26,7 +26,6 @@
 {section|{section|
     {h|goodbye}
 
-{inc table}
 {table head=1 foot=1|
     |---------------------------------------------------------------|
     |     1{l}x     |      2        |        3      |       4       |
@@ -42,6 +41,7 @@
     More fruits and colours {b|and} other good things
     {set table123|({get table})}
 }
+{inc table}
 
 {section|
 

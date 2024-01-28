@@ -101,8 +101,9 @@ class SectionCounter(Stack):
 
     default_separator = '.'
 
-    def __init__(self, context):
+    def __init__(self, context, level_change_func=None):
         self.context = context
+        self.level_change_func = level_change_func
         super().__init__('section', level=0, child_number=1)
 
     def get_separator(self):
@@ -136,11 +137,18 @@ class SectionCounter(Stack):
     def enter(self, start_num=None):
         if start_num is None:
             start_num = self.child_number
-        self.push(number=start_num, child_number=1, level=self.level+1)
+        new_level = self.level+1
+        self.push(number=start_num, child_number=1, level=new_level)
+        # Notify context of level change, so it can notify other counters
+        if self.level_change_func:
+            self.level_change_func(new_level)
 
     def exit(self):
         # Next child will be numbered consecutive to this one
         self.child_number = self.pop()['number'] + 1
+        # Notify context of level change, so it can notify other counters
+        if self.level_change_func:
+            self.level_change_func(self.level)
 
 
 class CompoundCounter:
@@ -157,39 +165,44 @@ class CompoundCounter:
 
     @property
     def level(self):
-        # Level is determined by current section level, and capped by max_level
-        return min(self.context.section_counter.level + 1, self.max_level)
+        return len(self.counters)
+
+    @property
+    def number(self):
+        return self.counters[-1]
+    @number.setter
+    def number(self, value):
+        self.counters[-1] = value
 
     @property
     def numbers(self):
         section_numbers = self.context.section_counter.numbers[0:self.level - 1]
-        return section_numbers + [self.counters[-1]]
+        return section_numbers + [self.number]
 
     def get_text(self):
         return self.get_separator().join(str(n) for n in self.numbers)
 
     text = property(get_text)
 
-    def resize_counters(self):
+    def section_level_changed(self, section_level):
         # Resize the counter list to match the current section level
-        level = self.level
+        level = min(section_level + 1, self.max_level)
         while len(self.counters) < level:
             self.counters.append(1)
-        if len(self.counters) > level:
-            self.counters = self.counters[0:level]
+        while len(self.counters) > level:
+            self.counters.pop()
 
     def reset(self):
         self.counters = [1]
 
     def enter(self):
-        self.resize_counters()
+        pass
 
     def exit(self):
-        self.counters[-1] += 1
+        self.inc()
 
     def inc(self):
-        self.resize_counters()
-        self.counters[-1] += 1
+        self.number += 1
 
 
 class TableCounter(CompoundCounter):
@@ -269,7 +282,7 @@ class RenderContext(BaseContext):
         super().__init__(**kwargs)
         self.format = format
         self.html_class_prefix = html_class_prefix
-        self.section_counter = SectionCounter(self)
+        self.section_counter = SectionCounter(self, level_change_func=self.section_level_changed)
         self.table_counter = TableCounter(self)
         self.figure_counter = FigureCounter(self)
         self.list_counter = ListCounter(self)
@@ -303,6 +316,11 @@ class RenderContext(BaseContext):
         var = self.vars.get(name)
         if var:
             var.inc_value()
+
+    def section_level_changed(self, level):
+        # Notify other counters that a section was entered or exited
+        self.table_counter.section_level_changed(level)
+        self.figure_counter.section_level_changed(level)
 
 
 class RenderMixin:
