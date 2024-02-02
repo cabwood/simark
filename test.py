@@ -1,75 +1,32 @@
 #!/usr/bin/env python
+import re
+from simark.parse import ParseContext, Parser, Many, parse_regex, parse_many
+from simark.core import Text, BaseElement, BaseElementParser
 
-from simark.parse import *
-from simark.table import *
+context = ParseContext('   ')
 
-from simark import \
-    DocumentParser, \
-    ParseContext, \
-    RenderContext, \
-    UnknownParser, \
-    FormatParser, \
-    LineBreakParser, \
-    ParagraphBreakParser, \
-    HeadingParser, \
-    SectionParser, \
-    ListParser, \
-    LinkParser, \
-    GetVarParser, \
-    SetVarParser, \
-    IncrementParser, \
-    EntityParser, \
-    CodeParser, \
-    ImageParser, \
-    FloatParser, \
-    BlockParser, \
-    TableParser
+class CharParser(Parser):
 
-parsers = [
-    FormatParser(),
-    LineBreakParser(),
-    ParagraphBreakParser(),
-    HeadingParser(),
-    SectionParser(),
-    ListParser(),
-    LinkParser(),
-    GetVarParser(),
-    SetVarParser(),
-    IncrementParser(),
-    EntityParser(),
-    CodeParser(),
-    ImageParser(),
-    FloatParser(),
-    BlockParser(),
-    TableParser(),
-    UnknownParser(),
-]
+    char_pattern = re.compile(r'.')
 
-# parser = _RowShortParser()
+    def parse1(self, context):
+        chunk = parse_regex(context, self.char_pattern)
+        return Text(context.src, chunk.start_pos, chunk.end_pos, text=chunk.match[0])
 
-# src = """a | b | c """
+class TestElement(BaseElement):
+    pass
 
-# context = ParseContext(src, parsers=parsers)
+class TestParser(BaseElementParser):
 
-# chunk = parser.parse(context)
+    parser = Many(CharParser(), min_count=1)
 
-# chunk.walk(lambda element, level: print(f"{' '*4*level}{element}"))
+    def parse1(self, context):
+        children = self.parser.parse(context).children
+        return TestElement(context.src, children[0].start_pos, children[-1].end_pos, children=children)
 
-from simark.render import SectionCounter
-s = SectionCounter(None)
-print(s.numbers)
-s.enter(start_num=5)
-print(s.numbers)
-s.enter() ; print(s.numbers) ; s.exit()
-print(s.numbers)
-s.enter() ; print(s.numbers) ; print(s.text) ; s.exit()
-s.enter() ; print(s.numbers) ; s.exit()
-s.enter() ; print(s.numbers) ; s.exit()
-print(s.numbers)
-s.exit()
-print(s.numbers)
-s.enter() ; print(s.numbers)
-s.enter() ; print(s.numbers) ; s.exit()
-s.enter() ; print(s.numbers) ; s.exit()
-s.exit()
-print(s.numbers)
+
+chunk = TestParser().parse(context)
+
+chunk.walk(lambda chunk, level: print(f"{' '*2*level}{chunk}"))
+
+print(chunk.is_whitespace())

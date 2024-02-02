@@ -1,12 +1,19 @@
+"""
+Implementation of a simple LIFO stack that uses dictionaries to store state
+information, and a context object that employs this stack to keep track of
+its current state.
+"""
+
 class Stack:
 
     def __init__(self, name, **kwargs):
         self.name = name
-        self._kwargs = kwargs
+        self.items = [kwargs]
         self.reset()
 
-    def reset(self, **kwargs):
-        self.items = [self._kwargs]
+    def reset(self):
+        # Keep only initial state
+        self.items = self.items[:1]
 
     @property
     def top(self):
@@ -19,11 +26,18 @@ class Stack:
         self.top[name] = value
 
     def push(self, **kwargs):
+        # Top dictionary is a shallow copy of the dictionary underneath it,
+        # updated with new or additional key/value pairs from kwargs.
+        # Don't modify mutable members, like lists, since they are shared
+        # by all stack entries, and they'll all be changed.
         item = self.top.copy()
         item.update(kwargs)
         self.items.append(item)
 
     def pop(self):
+        # Can't pop bottom item
+        if len(self.items) == 1:
+            raise ValueError(f"Illegal pop of empty stack {repr(self.name)}")
         return self.items.pop()
 
 

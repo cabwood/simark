@@ -1,7 +1,6 @@
-import re
 import html
-from .parse import Parser, NoMatch, Many, Any, All, Opt, Regex, Exact, Chunk
-from .core import ElementParser, Element, Text, VerbatimParser, \
+from .parse import Parser, NoMatch, Many, Any, Regex, Chunk
+from .core import BlockParser, InlineParser, UnknownParser, ElementParser, Element, Text, \
     unescape, esc_element_open, esc_element_close, \
     ESC_BACKSLASH, ESC_BACKTICK, ESC_ELEMENT_OPEN, ESC_ELEMENT_CLOSE
 
@@ -127,6 +126,21 @@ class TableTextParser(Parser):
         ))
 
 
+class TablePartsParser(Parser):
+
+    parser = Many(
+        Any(
+            BlockParser(),
+            InlineParser(),
+            TableTextParser(),
+            UnknownParser(),
+        )
+    )
+
+    def parse1(self, context):
+        return self.parser.parse(context)
+
+
 class TableCaption(Element):
 
     def __init__(self, src, start_pos, end_pos, show_numbers=None, visible=None, **arguments):
@@ -137,10 +151,10 @@ class TableCaption(Element):
     def setup_enter(self, context):
         self.numbers = context.table_counter.text
 
-    def render_html(self, context):
+    def render_self(self, context):
         if not self.visible:
             return ''
-        html_out = self.render_children_html(context)
+        html_out = self.render_children(context)
         if self.show_numbers:
             html_out = f'Table {html.escape(self.numbers)}. {html_out}'
         html_out = html_out.strip()
@@ -154,29 +168,18 @@ class _CaptionShortParser(Parser):
 
     start_parser = Regex(r'[^\s\|]', consume=False)
     end_parser = Regex(r'(\n|$)')
+    child_parser = TablePartsParser()
 
     def parse1(self, context):
         self.start_parser.parse(context)
         context.push('table', allow_newline=False)
         try:
             start_pos = context.pos
-            children = self.get_child_parser(context).parse(context).children
+            children = self.child_parser.parse(context).children
             self.end_parser.parse(context)
             return TableCaption(context.src, start_pos, context.pos, children=children)
         finally:
             context.pop('table')
-
-    def get_child_parser(self, context):
-        parsers = context.get_stack('main').get('parsers', [])
-        if not hasattr(self, '_child_parser'):
-            self._child_parser = Many(
-                Any(
-                    VerbatimParser(),
-                    *parsers,
-                    TableTextParser(),
-                ),
-            )
-        return self._child_parser
 
 
 class _CaptionElementParser(ElementParser):
@@ -200,7 +203,7 @@ class TableCaptionParser(Parser):
         return self.content_parser.parse(context)
 
 
-class _BaseElement(Element):
+class _BaseTableElement(Element):
     """
     Ancenstor class for tables, rowsets, rows and cells, handling common
     formatting features that they all share.
@@ -240,9 +243,7 @@ class _BaseElement(Element):
         pass
 
 
-class TableCell(_BaseElement):
-
-    paragraphs = True
+class TableCell(_BaseTableElement):
 
     def __init__(self, src, start_pos, end_pos, row_borders=None, col_borders=None, align=None, \
             col_span=None, row_span=None, short=False, **arguments):
@@ -258,7 +259,7 @@ class TableCell(_BaseElement):
     def setup_exit(self, context):
         context.pop('main')
 
-    def render_html(self, context):
+    def render_self(self, context):
         head = context.get_stack('table').get('head', False)
         tag = 'th' if head else 'td'
         classes = []
@@ -280,7 +281,7 @@ class TableCell(_BaseElement):
         class_attr = self.get_class_attr(context, *classes)
         row_span_attr = f' rowspan="{self.row_span}"' if self.row_span > 1 else ''
         col_span_attr = f' colspan="{self.col_span}"' if self.col_span > 1 else ''
-        html_out = self.render_children_html(context)
+        html_out = self.render_children(context)
         indent, newline = self.get_whitespace(context)
         return f'{indent}<{tag}{class_attr}{row_span_attr}{col_span_attr}>{html_out}</{tag}>{newline}'
 
@@ -294,6 +295,7 @@ class _CellShortParser(Parser):
     """
 
     lead_parser = Regex(r'(\|+)(~*)([1-9]?)')
+    child_parser = TablePartsParser()
 
     def parse1(self, context):
         start_pos = context.pos
@@ -312,21 +314,9 @@ class _CellShortParser(Parser):
             row_span = max(1, len(lead.match[2]))
             align = lead.match[3] if lead.match[3] else '_'
         parse_whitespace(context)
-        children = self.get_child_parser(context).parse(context).children
+        children = self.child_parser.parse(context).children
         return TableCell(context.src, start_pos, context.pos, children=children, \
             align=align, col_span=col_span, row_span=row_span, short=True)
-
-    def get_child_parser(self, context):
-        parsers = context.get_stack('main').get('parsers', [])
-        if not hasattr(self, '_child_parser'):
-            self._child_parser = Many(
-                Any(
-                    VerbatimParser(),
-                    *parsers,
-                    TableTextParser(),
-                ),
-            )
-        return self._child_parser
 
 
 class _CellElementParser(ElementParser):
@@ -373,11 +363,11 @@ class TableCellParser(Parser):
         return self.content_parser.parse(context)
 
 
-class TableRow(_BaseElement):
+class TableRow(_BaseTableElement):
 
-    def render_html(self, context):
+    def render_self(self, context):
         class_attr = self.get_class_attr(context)
-        html_out = self.render_children_html(context)
+        html_out = self.render_children(context)
         indent, newline = self.get_whitespace(context)
         return f'{indent}<tr{class_attr}>{newline}{html_out}{newline}{indent}</tr>{newline}'
 
@@ -464,12 +454,12 @@ class TableRowParser(Parser):
         return self.row_parser.parse(context)
 
 
-class TableRowSet(_BaseElement):
+class TableRowSet(_BaseTableElement):
 
     names = ['rowset']
 
-    def render_html(self, context):
-        return self.render_children_html(context)
+    def render_self(self, context):
+        return self.render_children(context)
 
     def get_bounds_rect(self):
         col_count = 0
@@ -543,9 +533,9 @@ class TableRowSetBreakParser(Parser):
 
 class _Section(Element):
 
-    def render_html(self, context):
+    def render_self(self, context):
         class_attr = self.get_class_attr(context)
-        html_out = self.render_children_html(context)
+        html_out = self.render_children(context)
         indent, newline = self.get_whitespace(context)
         return f'{indent}<{self.html_tag}{class_attr}>{newline}{html_out}{newline}{indent}</{self.html_tag}>{newline}'
 
@@ -554,10 +544,10 @@ class TableHead(_Section):
 
     html_tag = 'thead'
 
-    def render_html(self, context):
+    def render_self(self, context):
         context.push('table', head=True)
         try:
-            return super().render_html(context)
+            return super().render_self(context)
         finally:
             context.pop('table')
 
@@ -572,7 +562,7 @@ class TableFoot(_Section):
     html_tag = 'tfoot'
 
 
-class Table(_BaseElement):
+class Table(_BaseTableElement):
 
     default_row_borders = '1*1'
     default_col_borders = '1*1'
@@ -712,9 +702,9 @@ class Table(_BaseElement):
             children.append(TableFoot(first.src, first.start_pos, last.end_pos, children=foot_rowsets))
         self.children = children
 
-    def render_html(self, context):
+    def render_self(self, context):
         class_attr = self.get_class_attr(context)
-        html_out = self.render_children_html(context)
+        html_out = self.render_children(context)
         indent, newline = self.get_whitespace(context)
         return f'{indent}<table{class_attr}>{newline}{html_out}{newline}{indent}</table>{newline}'
 

@@ -1,44 +1,14 @@
-import re
 import html
 from itertools import permutations
 from .parse import NoMatch, Many, Any, Regex
-from .core import ElementParser, Element, TextParser, Text, VerbatimParser, NonCloseCharParser
+from .core import ElementParser, Element, TextParser, Text, VerbatimParser
 from .entities import plain_entities, html_entities
-
-class Unknown(Element):
-    """
-    Matches elements which are structurally valid, but fail other tests such
-    as name or argument validity. Match failure might otherwise produce a
-    Text object that would eat an element-opener, and upset element nesting.
-    """
-
-    def render_html(self, context):
-        if self.children:
-            open_out = html.escape(self.src[self.start_pos:self.children[0].start_pos])
-            close_out = html.escape(self.src[self.children[-1].end_pos:self.end_pos])
-            return f'{open_out}{self.render_children_html(context)}{close_out}'
-        else:
-            return html.escape(self.raw)
-
-    def __str__(self):
-        return f"{self.__class__.__name__}[{self.start_pos}:{self.end_pos}] (name={self.name})"
-
-
-class UnknownParser(ElementParser):
-
-    element_class = Unknown
-
-    def parse_name(self, context, arguments):
-        # Allow any name
-        arguments['name'] = self.name_parser.parse(context).match[1]
 
 
 #=============================================================================
 
 
 class GetVar(Element):
-
-    inline = True
 
     def __init__(self, src, start_pos, end_pos, children, name=None, arguments=None, var_name=None):
         super().__init__(src, start_pos, end_pos, children, name, arguments)
@@ -50,7 +20,7 @@ class GetVar(Element):
     def setup_enter(self, context):
         self.var_value = self.evaluate(context)
 
-    def render_html(self, context):
+    def render_self(self, context):
         if self.var_value is None:
             # Another pass, another chance to evaluate
             self.var_value = self.evaluate(context) or ''
@@ -78,15 +48,13 @@ class GetVarParser(ElementParser):
 
 class SetVar(Element):
 
-    inline = True
-
     def __init__(self, src, start_pos, end_pos, children=None, name=None, arguments=None, var_name=None):
         super().__init__(src, start_pos, end_pos, children, name, arguments)
         self.var_name = var_name
 
     def setup_enter(self, context):
-        # Ignore anything that isn't Text or Reference. Accumulate
-        # plain text content, for variable value.
+        # Content should be only Text or GetVar. Value is concatenation of
+        # plain text content
         value = ''
         for child in self.children:
             if isinstance(child, Text):
@@ -95,7 +63,7 @@ class SetVar(Element):
                 value += str(child.evaluate(context))
         context.set_var(self.var_name, value)
 
-    def render_html(self, context):
+    def render_self(self, context):
         return ''
 
 
@@ -126,8 +94,6 @@ class SetVarParser(ElementParser):
 
 class IncVar(Element):
 
-    inline = True
-
     def __init__(self, src, start_pos, end_pos, children, name=None, arguments=None, var_name=None):
         super().__init__(src, start_pos, end_pos, children, name, arguments)
         self.var_name = var_name
@@ -135,11 +101,11 @@ class IncVar(Element):
     def setup_enter(self, context):
         context.inc_var(self.var_name)
 
-    def render_html(self, context):
+    def render_self(self, context):
         return ''
 
 
-class IncrementParser(ElementParser):
+class IncVarParser(ElementParser):
 
     names = ['inc']
     element_class = IncVar
@@ -156,6 +122,24 @@ class IncrementParser(ElementParser):
 #=============================================================================
 
 
+class Paragraph(Element):
+
+    def render_self(self, context):
+        html_out = self.render_children(context)
+        class_attr = self.get_class_attr(context)
+        indent, newline = self.get_whitespace(context)
+        return f'{indent}<p{class_attr}>{html_out}</p>{newline}'
+
+
+class ParagraphParser(ElementParser):
+
+    names = ['p']
+    element_class = Paragraph
+
+
+#=============================================================================
+
+
 def permutate(items):
     perms = []
     for r in range(1, len(items)+1):
@@ -166,10 +150,8 @@ def permutate(items):
 
 class Format(Element):
 
-    inline = True
-
-    def render_html(self, context):
-        html_out = self.render_children_html(context)
+    def render_self(self, context):
+        html_out = self.render_children(context)
         for c in self.name:
             html_out = f'<{c}>{html_out}</{c}>'
         class_attr = self.get_class_attr(context)
@@ -187,8 +169,6 @@ class FormatParser(ElementParser):
 
 class Section(Element):
 
-    paragraphs = True
-
     def __init__(self, src, start_pos, end_pos, children, name=None, arguments=None, start_num=None):
         super().__init__(src, start_pos, end_pos, children, name, arguments)
         self.start_num = start_num
@@ -199,16 +179,11 @@ class Section(Element):
     def setup_exit(self, context):
         context.section_counter.exit()
 
-    def render_html(self, context):
-        html_out = self.render_children_html(context)
+    def render_self(self, context):
+        html_out = self.render_children(context)
         class_attr = self.get_class_attr(context)
         indent, newline = self.get_whitespace(context)
         return f'{indent}<section{class_attr}>{newline}{html_out}{newline}{indent}</section>{newline}'
-
-    @classmethod
-    def get_section_info(cls, context):
-        stack = context.get_stack('section')
-        return stack, stack.get('level', default=0), stack.get('number', default=1), stack.get('text', default=str(number))
 
 
 class SectionParser(ElementParser):
@@ -240,13 +215,11 @@ class Heading(Element):
             self.numbers = ''
         else:
             show_nums = self.show_numbers
-            if show_nums is None:
-                show_nums = context.show_heading_numbers
             self.numbers = context.section_counter.text + ' ' if show_nums else ''
 
-    def render_html(self, context):
+    def render_self(self, context):
         # Clamp level to between 1 and 6, corresponding to available HTML <h?> options
-        html_out = html.escape(self.numbers) + self.render_children_html(context)
+        html_out = html.escape(self.numbers) + self.render_children(context)
         html_classes = []
         if self.html_class:
             html_classes.append(self.html_class)
@@ -275,19 +248,17 @@ class HeadingParser(ElementParser):
 
 class ListItem(Element):
 
-    paragraphs = True
-
     def setup_enter(self, context):
         self.numbers = context.list_counter.text
 
     def setup_exit(self, context):
         context.list_counter.inc()
 
-    def render_html(self, context):
+    def render_self(self, context):
         class_attr = self.get_class_attr(context)
-        html_out = self.render_children_html(context)
+        html_out = self.render_children(context)
         indent, newline = self.get_whitespace(context)
-        return f'{indent}<li{class_attr}>{newline}{html_out}{newline}{indent}</li>{newline}'
+        return f'{indent}<li{class_attr}>{html_out}</li>{newline}'
 
 
 class ListItemParser(ElementParser):
@@ -322,12 +293,12 @@ class List(Element):
     def setup_exit(self, context):
         context.list_counter.exit()
 
-    def render_html(self, context):
+    def render_self(self, context):
         class_attr = self.get_class_attr(context)
         style_attr = f' style="{list_styles[self.style]}"'
         start_attr = '' if self.start_num == 1 else f' start="{self.start_num}"'
         tag = 'ol' if self.style in '1aAiI' else 'ul'
-        html_out = self.render_children_html(context)
+        html_out = self.render_children(context)
         indent, newline = self.get_whitespace(context)
         return f'{indent}<{tag}{class_attr}{style_attr}{start_attr}>{newline}{html_out}{newline}{indent}</{tag}>{newline}'
 
@@ -358,14 +329,12 @@ class ListParser(ElementParser):
 
 class Link(Element):
 
-    inline = True
-
     def __init__(self, src, start_pos, end_pos, children, name=None, arguments=None, url=None):
         super().__init__(src, start_pos, end_pos, children, name, arguments)
         self.url = url
 
-    def render_html(self, context):
-        html_out = self.render_children_html(context) or html.escape(self.url)
+    def render_self(self, context):
+        html_out = self.render_children(context) or html.escape(self.url)
         class_attr = self.get_class_attr(context)
         return f'<a{class_attr} href="{self.url}">{html_out}</a>'
 
@@ -388,9 +357,7 @@ class LinkParser(ElementParser):
 
 class LineBreak(Element):
 
-    inline = True
-
-    def render_html(self, context):
+    def render_self(self, context):
         return f'<br>'
 
 
@@ -403,36 +370,9 @@ class LineBreakParser(ElementParser):
 #=============================================================================
 
 
-class ParagraphBreak(Element):
-
-    pass
-
-
-class ParagraphBreakParser(ElementParser):
-
-    names = ['p']
-    element_class = ParagraphBreak
-
-    from .core import Paragraph
-
-    def parse1(self, context):
-        # A {p} element without children is a paragraph break, which is used to
-        # divide text into paragraphs. If the {p} element has children, though,
-        # we should place them inside a regular Paragraph element.
-        chunk = super().parse1(context)
-        if chunk.children:
-            return self.Paragraph(chunk.src, chunk.start_pos, chunk.end_pos, chunk.children)
-        return chunk
-
-
-#=============================================================================
-
-
 class Entity(Element):
 
-    inline = True
-
-    def render_html(self, context):
+    def render_self(self, context):
         return html_entities[self.name[1:]]
 
 
@@ -448,9 +388,9 @@ class EntityParser(ElementParser):
 
 class Code(Element):
 
-    def render_html(self, context):
+    def render_self(self, context):
         class_attr = self.get_class_attr(context)
-        html_out = self.render_children_html(context)
+        html_out = self.render_children(context)
         indent, newline = self.get_whitespace(context)
         return f'{indent}<pre{class_attr}>{html_out}</pre>{newline}'
 
@@ -459,9 +399,15 @@ class CodeParser(ElementParser):
 
     names = ['code']
     element_class = Code
+    parser = Many(
+                Any(
+                    VerbatimParser(),
+                    TextParser(),
+                )
+            )
 
     def parse_children(self, context, arguments):
-        children = super().parse_children(context, arguments)
+        children = self.parser.parse(context).children
         # Remove leading and trailing empty lines
         if children:
             text = ''
@@ -481,16 +427,6 @@ class CodeParser(ElementParser):
             return [Text(context.src, start_pos, end_pos, '\n'.join(lines))]
         return children
 
-    def get_child_parser(self, context):
-        # All elements must descend from Text
-        return Many(
-            Any(
-                VerbatimParser(),
-                TextParser(),
-                NonCloseCharParser(),
-            )
-        )
-
 
 #=============================================================================
 
@@ -505,15 +441,13 @@ float_styles = {
 
 class Float(Element):
 
-    paragraphs = True
-
     def __init__(self, src, start_pos, end_pos, children, name=None, arguments=None, align=None, clear=None):
         super().__init__(src, start_pos, end_pos, children, name, arguments)
         self.align = align
         self.clear = clear
 
-    def render_html(self, context):
-        content_html = self.render_children_html(context)
+    def render_self(self, context):
+        content_html = self.render_children(context)
         float_style = float_styles[self.align]
         clear_style = ' clear: both;' if self.clear else ''
         indent, newline = self.get_whitespace(context)
@@ -537,7 +471,7 @@ class FloatParser(ElementParser):
 #=============================================================================
 
 
-block_align_styles = {
+align_styles = {
     None: '',
     'l': 'text-align: left;',
     'left': 'text-align: left;',
@@ -550,31 +484,29 @@ block_align_styles = {
 }
 
 
-class Block(Element):
-
-    paragraphs = True
+class Align(Element):
 
     def __init__(self, src, start_pos, end_pos, children, name=None, arguments=None, align=None):
         super().__init__(src, start_pos, end_pos, children, name, arguments)
         self.align = align
 
-    def render_html(self, context):
+    def render_self(self, context):
         class_attr = self.get_class_attr(context)
-        style_attr = f' style="{block_align_styles[self.align]}"' if self.align else ''
-        html_out = self.render_children_html(context)
+        style_attr = f' style="{align_styles[self.align]}"' if self.align else ''
+        html_out = self.render_children(context)
         indent, newline = self.get_whitespace(context)
         return f'{indent}<div{class_attr}{style_attr}>{newline}{html_out}{newline}{indent}</div>{newline}'
 
 
-class BlockParser(ElementParser):
+class AlignParser(ElementParser):
 
     names = ['block']
-    element_class = Block
+    element_class = Align
 
     def parse_arguments(self, context, arguments):
         args = self.arguments_parser.parse(context)
         align = args.get('align', 0)
-        if not align in block_align_styles:
+        if not align in align_styles:
             raise NoMatch
         arguments['align'] = align
 

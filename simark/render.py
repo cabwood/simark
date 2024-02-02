@@ -174,13 +174,13 @@ class CompoundCounter:
     def number(self, value):
         self.counters[-1] = value
 
-    @property
-    def numbers(self):
-        section_numbers = self.context.section_counter.numbers[0:self.level - 1]
-        return section_numbers + [self.number]
-
     def get_text(self):
-        return self.get_separator().join(str(n) for n in self.numbers)
+        if self.max_level == 1:
+            return str(self.number)
+        section_numbers = self.context.section_counter.numbers[0:self.level - 1]
+        section_separator = self.context.section_counter.get_separator()
+        section_text = section_separator.join(str(n) for n in section_numbers)
+        return f'{section_text}{self.get_separator()}{self.number}'
 
     text = property(get_text)
 
@@ -274,14 +274,8 @@ class ListCounter(Stack):
 
 class RenderContext(BaseContext):
 
-    show_heading_numbers = True
-    show_table_numbers = True
-    show_figure_numbers = True
-
-    def __init__(self, format, html_class_prefix=HTML_CLASS_PREFIX, **kwargs):
+    def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.format = format
-        self.html_class_prefix = html_class_prefix
         self.section_counter = SectionCounter(self, level_change_func=self.section_level_changed)
         self.table_counter = TableCounter(self)
         self.figure_counter = FigureCounter(self)
@@ -331,7 +325,7 @@ class RenderMixin:
         context.reset_counters()
         self._setup(context)
         context.reset_counters()
-        return self._render(context)
+        return self.render_self(context)
 
     def _setup(self, context):
         stack = context.get_stack('main')
@@ -357,27 +351,12 @@ class RenderMixin:
         """Called after children have been setup"""
         pass
 
-    def _render(self, context):
-        if context.format == 'plain':
-            return self.render_plain(context)
-        elif context.format == 'html':
-            return self.render_html(context)
-        raise ValueError(f'Invalid format {context.format}')
+    def render_self(self, context):
+        return self.render_children(context)
 
-    def render_plain(self, context):
-        return self.render_children_plain(context)
-
-    def render_children_plain(self, context):
+    def render_children(self, context):
         if self.children:
-            return ''.join([child.render_plain(context) for child in self.children])
-        return ''
-
-    def render_html(self, context):
-        return self.render_children_html(context)
-
-    def render_children_html(self, context):
-        if self.children:
-            return ''.join([child.render_html(context) for child in self.children])
+            return ''.join([child.render_self(context) for child in self.children])
         return ''
 
     def get_whitespace(self, context):
@@ -386,7 +365,7 @@ class RenderMixin:
         return indent, newline
 
     def get_class_attr(self, context, *classes):
-        prefix = context.html_class_prefix or ""
+        prefix = context.get_stack('main').get('html_class_prefix', '')
         if classes:
             return f' class="{" ".join([f"{prefix}{c}" for c in classes])}"'
         if self.html_class:

@@ -35,7 +35,7 @@ class Image(Element):
     def setup(self, context):
         self.numbers = context.figure_numbers
 
-    def render_html(self, context):
+    def render_self(self, context):
         src_attr = f' src="{self.url}"'
         if self.size_mode == 'name':
             width = image_sizes[self.size_value]
@@ -48,7 +48,7 @@ class Image(Element):
                 width_style = f' style="width: {self.size_value}vw;"'
         caption_html = ''
         if self.show_caption:
-            caption_html = self.render_children_html(context)
+            caption_html = self.render_children(context)
             if self.show_numbers:
                 caption_html = f'Fig. {html.escape(self.numbers)}. {caption_html}'
             caption_html = caption_html.strip()

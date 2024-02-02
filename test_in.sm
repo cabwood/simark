@@ -2,6 +2,11 @@
 {h|title}
 {section|
     {h|Hello}
+    {te{b|s}t}
+    {list|
+        {item| First}
+        {item| Second}
+    }
     {section start=5|
         {h|Dogs}
         {table head=1 foot=1|
