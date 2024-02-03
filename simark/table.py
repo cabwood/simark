@@ -1,5 +1,5 @@
 import html
-from .parse import Parser, NoMatch, Many, Any, Regex, Chunk
+from .parse import Parser, NoMatch, Leave, Many, Any, Regex, Chunk
 from .core import BlockParser, InlineParser, UnknownParser, ElementParser, Element, Text, \
     unescape, esc_element_open, esc_element_close, \
     ESC_BACKSLASH, ESC_BACKTICK, ESC_ELEMENT_OPEN, ESC_ELEMENT_CLOSE
@@ -111,12 +111,13 @@ class TableTextParser(Parser):
     all_parser = Regex(rf"(\\\\|\\`|\\\||\\{esc_element_open}|\\{esc_element_close}|[^|`{esc_element_open}{esc_element_close}])+")
     no_nl_parser = Regex(rf"(\\\\|\\`|\\\||\\{esc_element_open}|\\{esc_element_close}|[^\n|`{esc_element_open}{esc_element_close}])+")
 
-    def parse1(self, context):
+    @classmethod
+    def parse1(cls, context):
         allow_newline = context.get_stack('table').get('allow_newline', True)
         if allow_newline:
-            match = self.all_parser.parse(context).match
+            match = cls.all_parser.parse(context).match
         else:
-            match = self.no_nl_parser.parse(context).match
+            match = cls.no_nl_parser.parse(context).match
         return Text(context.src, match.start(0), match.end(0), unescape(match[0],
             ESC_BACKSLASH,
             ESC_BACKTICK,
@@ -137,8 +138,9 @@ class TablePartsParser(Parser):
         )
     )
 
-    def parse1(self, context):
-        return self.parser.parse(context)
+    @classmethod
+    def parse1(cls, context):
+        return cls.parser.parse(context)
 
 
 class TableCaption(Element):
@@ -166,17 +168,18 @@ class TableCaption(Element):
 
 class _CaptionShortParser(Parser):
 
-    start_parser = Regex(r'[^\s\|]', consume=False)
+    start_parser = Leave(Regex(r'[^\s\|]'))
     end_parser = Regex(r'(\n|$)')
     child_parser = TablePartsParser()
 
-    def parse1(self, context):
-        self.start_parser.parse(context)
+    @classmethod
+    def parse1(cls, context):
+        cls.start_parser.parse(context)
         context.push('table', allow_newline=False)
         try:
             start_pos = context.pos
-            children = self.child_parser.parse(context).children
-            self.end_parser.parse(context)
+            children = cls.child_parser.parse(context).children
+            cls.end_parser.parse(context)
             return TableCaption(context.src, start_pos, context.pos, children=children)
         finally:
             context.pop('table')
@@ -187,8 +190,9 @@ class _CaptionElementParser(ElementParser):
     names = ['caption']
     element_class = TableCaption
 
-    def parse_arguments(self, context, arguments):
-        args = self.arguments_parser.parse(context)
+    @classmethod
+    def parse_arguments(cls, context, arguments):
+        args = cls.arguments_parser.parse(context)
         arguments['show_numbers'] = args.get_bool('numbers')
 
 
@@ -199,8 +203,9 @@ class TableCaptionParser(Parser):
         _CaptionShortParser(),
     )
 
-    def parse1(self, context):
-        return self.content_parser.parse(context)
+    @classmethod
+    def parse1(cls, context):
+        return cls.content_parser.parse(context)
 
 
 class _BaseTableElement(Element):
@@ -297,11 +302,12 @@ class _CellShortParser(Parser):
     lead_parser = Regex(r'(\|+)(~*)([1-9]?)')
     child_parser = TablePartsParser()
 
-    def parse1(self, context):
+    @classmethod
+    def parse1(cls, context):
         start_pos = context.pos
         parse_whitespace(context)
         try:
-            lead = self.lead_parser.parse(context)
+            lead = cls.lead_parser.parse(context)
         except NoMatch:
             # Leader was absent or not found, so set default cell properties
             lead = None
@@ -314,7 +320,7 @@ class _CellShortParser(Parser):
             row_span = max(1, len(lead.match[2]))
             align = lead.match[3] if lead.match[3] else '_'
         parse_whitespace(context)
-        children = self.child_parser.parse(context).children
+        children = cls.child_parser.parse(context).children
         return TableCell(context.src, start_pos, context.pos, children=children, \
             align=align, col_span=col_span, row_span=row_span, short=True)
 
@@ -329,13 +335,15 @@ class _CellElementParser(ElementParser):
 
     lead_parser = Regex(r'\|?[^\S\n]*')
 
-    def parse1(self, context):
+    @classmethod
+    def parse1(cls, context):
         parse_whitespace(context)
         # Look for an optional bar prefix prior to the {cell} proper
-        self.lead_parser.parse(context)
+        cls.lead_parser.parse(context)
         return super().parse1(context)
 
-    def parse_children(self, context, arguments):
+    @classmethod
+    def parse_children(cls, context, arguments):
         # Contents of a {cell} construct may always contain newlines
         context.push('table', allow_newline=True)
         try:
@@ -343,8 +351,9 @@ class _CellElementParser(ElementParser):
         finally:
             context.pop('table')
 
-    def parse_arguments(self, context, arguments):
-        args = self.arguments_parser.parse(context)
+    @classmethod
+    def parse_arguments(cls, context, arguments):
+        args = cls.arguments_parser.parse(context)
         arguments['row_borders'] = args.get('row_borders')
         arguments['col_borders'] = args.get('col_borders')
         arguments['align'] = args.get('align')
@@ -359,8 +368,9 @@ class TableCellParser(Parser):
         _CellShortParser(),
     )
 
-    def parse1(self, context):
-        return self.content_parser.parse(context)
+    @classmethod
+    def parse1(cls, context):
+        return cls.content_parser.parse(context)
 
 
 class TableRow(_BaseTableElement):
@@ -382,10 +392,11 @@ class TableRow(_BaseTableElement):
 
 class _CellsParser(Parser):
 
-    cells_parser = Many(TableCellParser(), min_count=1)
+    parser = Many(TableCellParser(), min_count=1)
 
-    def parse1(self, context):
-        chunk = self.cells_parser.parse(context)
+    @classmethod
+    def parse1(cls, context):
+        chunk = cls.parser.parse(context)
         # Drop the last cell if it's an empty shorthand one. For aesthetic
         # reasons, a shorthand row can be terminated with '|' without creating
         # a cell, but if the cell is explicity defined using {cell}, then
@@ -401,17 +412,18 @@ class _RowShortParser(Parser):
     Finds and returns a TableRow expressed in bar-delimited form.
     """
 
-    start_parser = Regex(r'\S', consume=False)
+    start_parser = Leave(Regex(r'\S'))
     cells_parser = _CellsParser()
 
-    def parse1(self, context):
-        self.start_parser.parse(context)
+    @classmethod
+    def parse1(cls, context):
+        cls.start_parser.parse(context)
         # Shorthand rows are terminated by a newline, so do not permit
         # newlines in the parsed cells
         context.push('table', allow_newline=False)
         try:
             start_pos = context.pos
-            cells = self.cells_parser.parse(context).children
+            cells = cls.cells_parser.parse(context).children
             return TableRow(context.src, start_pos, context.pos, children=cells)
         finally:
             context.pop('table')
@@ -427,18 +439,20 @@ class _RowElementParser(ElementParser):
 
     cells_parser = _CellsParser()
 
-    def parse_arguments(self, context, arguments):
-        args = self.arguments_parser.parse(context)
+    @classmethod
+    def parse_arguments(cls, context, arguments):
+        args = cls.arguments_parser.parse(context)
         arguments['row_borders'] = args.get('row_borders')
         arguments['col_borders'] = args.get('col_borders')
         arguments['align'] = args.get('align')
 
-    def parse_children(self, context, arguments):
+    @classmethod
+    def parse_children(cls, context, arguments):
         # {row} elements can contain newline characters in their child cells,
         # since they are not terminated by newline.
         context.push('table', allow_newline=True)
         try:
-            return self.cells_parser.parse(context).children
+            return cls.cells_parser.parse(context).children
         finally:
             context.pop('table')
 
@@ -450,8 +464,9 @@ class TableRowParser(Parser):
         _RowShortParser(),
     )
 
-    def parse1(self, context):
-        return self.row_parser.parse(context)
+    @classmethod
+    def parse1(cls, context):
+        return cls.row_parser.parse(context)
 
 
 class TableRowSet(_BaseTableElement):
@@ -488,16 +503,19 @@ class TableRowSetParser(ElementParser):
         )
     )
 
-    def get_child_parser(self, context):
-        return self.child_parser
+    @classmethod
+    def get_child_parser(cls, context):
+        return cls.child_parser
 
-    def parse_arguments(self, context, arguments):
-        args = self.arguments_parser.parse(context)
+    @classmethod
+    def parse_arguments(cls, context, arguments):
+        args = cls.arguments_parser.parse(context)
         arguments['row_borders'] = args.get('row_borders')
         arguments['col_borders'] = args.get('col_borders')
         arguments['align'] = args.get('align')
 
-    def parse_children(self, context, arguments):
+    @classmethod
+    def parse_children(cls, context, arguments):
         children = super().parse_children(context, arguments)
         return [child for child in children if isinstance(child, TableRow)]
 
@@ -519,9 +537,10 @@ class TableRowSetBreakParser(Parser):
 
     all_parser = Regex(r'\|?-+([^\s\|-]*)[^\S\n-]*-*[^\S\n]*\|?[^\S\n]*(\n|$)')
 
-    def parse1(self, context):
+    @classmethod
+    def parse1(cls, context):
         start_pos = context.pos
-        lead = self.all_parser.parse(context).match[1]
+        lead = cls.all_parser.parse(context).match[1]
         args = lead.split(',')
         args += [''] * (3 - len(args))
         return TableRowSetBreak(context.src, start_pos, context.pos,
@@ -724,11 +743,13 @@ class TableParser(ElementParser):
         )
     )
 
-    def get_child_parser(self, context):
-        return self.child_parser
+    @classmethod
+    def get_child_parser(cls, context):
+        return cls.child_parser
 
-    def parse_arguments(self, context, arguments):
-        args = self.arguments_parser.parse(context)
+    @classmethod
+    def parse_arguments(cls, context, arguments):
+        args = cls.arguments_parser.parse(context)
         arguments['row_borders'] = args.get('row_borders')
         arguments['col_borders'] = args.get('col_borders')
         arguments['align'] = args.get('align')
@@ -737,7 +758,8 @@ class TableParser(ElementParser):
         arguments['head'] = args.get_int('head')
         arguments['foot'] = args.get_int('foot')
 
-    def parse2(self, context, chunk):
+    @classmethod
+    def parse2(cls, context, chunk):
         captions = []
         rowsets = [TableRowSet(context.src, 0, 0, children=[])]
         for child in chunk.children:

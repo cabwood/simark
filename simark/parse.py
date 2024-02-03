@@ -50,22 +50,12 @@ class Chunk:
         self._children = children
         self.depth = 0
 
-    @classmethod
-    def parse(cls, context, *args, **kwargs):
-        pos = context.pos
-        try:
-            chunk = cls.parse1(context, *args, **kwargs)
-            return chunk.parse2(context, *args, **kwargs)
-        except NoMatch:
-            context.pos = pos
-            raise
-
-    @classmethod
-    def parse1(cls, context, *args, **kwargs):
-        raise NotImplementedError
-
-    def parse2(self, context, *args, **kwargs):
-        return self
+    def parse3(self, context):
+        """
+        The last opportunity for the chunk to validate and organise itself prior
+        to rendering, or whatever comes next.
+        """
+        pass
 
     @property
     def raw(self):
@@ -77,9 +67,6 @@ class Chunk:
         if self.children:
             for child in self.children:
                 child.walk(func, level=level+1)
-
-    def __str__(self):
-        return f"{self.__class__.__name__}[{self.start_pos}:{self.end_pos}]"
 
     def get_children(self):
         if self._children is None:
@@ -96,17 +83,22 @@ class Chunk:
     def children(self, children):
         self.set_children(children)
 
+    @property
+    def __str_prefix__(self):
+        return f'{self.__class__.__name__}[{self.start_pos}:{self.end_pos}]'
+
+    def __str__(self):
+        return self.__str_prefix__
+
 
 class TextChunk(Chunk):
 
     def __init__(self, src, start_pos, end_pos, text):
-        if not isinstance(src, str):
-            raise ValueError
         super().__init__(src, start_pos, end_pos)
         self.text = text
 
     def __str__(self):
-        return f"{self.__class__.__name__}[{self.start_pos}:{self.end_pos}] {repr(self.text)}"
+        return f"{self.__str_prefix__} {repr(self.text)}"
 
 
 class RegexChunk(Chunk):
@@ -116,7 +108,7 @@ class RegexChunk(Chunk):
         self.match = match
 
     def __str__(self):
-        return f"{self.__class__.__name__}[{self.start_pos}:{self.end_pos}] {repr(self.raw)}"
+        return f"{self.__str_prefix__} {repr(self.match[0])}"
 
 
 class NullChunk(Chunk):
@@ -129,107 +121,44 @@ class NullChunk(Chunk):
 # Parsers
 #=============================================================================
 
-def _consume(func):
-    @functools.wraps(func)
-    def wrapper(context, *args, consume=True, **kwargs):
-        pos = context.pos
-        try:
-            chunk = func(context, *args, **kwargs)
-            if not consume:
-                context.pos = pos
-            return chunk
-        except NoMatch:
-            context.pos = pos
-            raise
-    return wrapper
-
-@_consume
-def parse_all(context, *parsers):
-    start_pos = context.pos
-    children = [parser(context) for parser in parsers]
-    return Chunk(context.src, start_pos, context.pos, children=children)
-
-@_consume
-def parse_any(context, *parsers):
-    for parser in parsers:
-        try:
-            return parser(context)
-        except NoMatch:
-            pass
-    raise NoMatch
-
-@_consume
-def parse_opt(context, parser):
-    try:
-        return parser(context)
-    except NoMatch:
-        return NullChunk(context.src, context.pos)
-
-@_consume
-def parse_many(context, parser, min_count=0, max_count=None):
-    start_pos = context.pos
-    chunks = []
-    count = 0
-    last_pos = context.pos
-    while True:
-        if max_count and count >= max_count:
-            break
-        try:
-            chunk = parser(context)
-        except NoMatch:
-            break
-        # Stop if the last chunk didn't advance current position
-        # to avoid looping indefinitely
-        if context.pos == last_pos:
-            break
-        chunks.append(chunk)
-        count += 1
-        last_pos = context.pos
-    if count < min_count:
-        raise NoMatch
-    return Chunk(context.src, start_pos, context.pos, children=chunks)
-
-@_consume
-def parse_regex(context, pattern):
-    start_pos = context.pos
-    match = pattern.match(context.src, pos=start_pos)
-    if not match:
-        raise NoMatch
-    end_pos = match.end()
-    context.pos = end_pos
-    return RegexChunk(context.src, start_pos, end_pos, match)
-
-@_consume
-def parse_exact(context, text):
-    start_pos = context.pos
-    end_pos = start_pos + len(text)
-    if context.src[start_pos:end_pos] != text:
-        raise NoMatch
-    context.pos = end_pos
-    return TextChunk(context.src, start_pos, end_pos, text)
-
 
 class Parser:
 
-    def __init__(self, consume=True):
-        self.consume = consume
+    def __init__(self, *args, **kwargs):
+        # Method parse() starts life as a class method, that invokes parse1()
+        # with its own args and kwargs. Monkey-patch parse() so it becomes an
+        # an instance method that instead calls parse1 with arguments provided
+        # here, during initialiasation. Record arguments to be passed later on
+        # to parse1.
+        self.parse = self.parse_inst
+        self.args = args
+        self.kwargs = kwargs
 
-    def parse(self, context):
+    @classmethod
+    def parse(cls, context, *args, **kwargs):
+        return cls._parse(context, *args, **kwargs)
+
+    def parse_inst(self, context):
+        return self._parse(context, *self.args, **self.kwargs)
+
+    @classmethod
+    def _parse(cls, context, *args, **kwargs):
         pos = context.pos
         try:
-            chunk = self.parse1(context)
-            chunk = self.parse2(context, chunk)
-            if not self.consume:
-                context.pos = pos
+            chunk = cls.parse1(context, *args, **kwargs)
+            chunk = cls.parse2(context, chunk)
+            chunk.parse3(context)
             return chunk
         except NoMatch:
             context.pos = pos
             raise
 
-    def parse1(self, context):
+    @classmethod
+    def parse1(cls, context, *args, **kwargs):
         raise NotImplementedError
 
-    def parse2(self, context, chunk):
+    @classmethod
+    def parse2(cls, context, chunk):
         """
         After the chunk has been successfully parsed and created, this is an
         opportunity for subsequent processing and validation, and even
@@ -237,68 +166,120 @@ class Parser:
         """
         return chunk
 
-    def __call__(self, *args, **kwargs):
-        return self.parse(*args, **kwargs)
+
+class Leave(Parser):
+    """
+    Parse the chunk but don't consume it
+    """
+
+    def __init__(self, parser):
+        super().__init__(parser)
+
+    @classmethod
+    def parse1(cls, context, parser):
+        pos = context.pos
+        chunk = parser.parse(context)
+        context.pos = pos
+        return chunk
 
 
 class All(Parser):
 
-    def __init__(self, *parsers, consume=True):
-        super().__init__(consume=consume)
-        self.parsers = parsers
+    def __init__(self, *parsers):
+        super().__init__(*parsers)
 
-    def parse1(self, context):
-        return parse_all(context, *self.parsers, consume=self.consume)
+    @classmethod
+    def parse1(self, context, *parsers):
+        start_pos = context.pos
+        children = [parser.parse(context) for parser in parsers]
+        return Chunk(context.src, start_pos, context.pos, children=children)
 
 
 class Any(Parser):
 
-    def __init__(self, *parsers, consume=True):
-        super().__init__(consume=consume)
-        self.parsers = parsers
+    def __init__(self, *parsers):
+        super().__init__(*parsers)
 
-    def parse1(self, context):
-        return parse_any(context, *self.parsers, consume=self.consume)
+    @classmethod
+    def parse1(self, context, *parsers):
+        for parser in parsers:
+            try:
+                return parser.parse(context)
+            except NoMatch:
+                pass
+        raise NoMatch
 
 
 class Opt(Parser):
 
-    def __init__(self, parser, consume=True):
-        super().__init__(consume=consume)
-        self.parser = parser
+    def __init__(self, parser):
+        super().__init__(parser)
 
-    def parse1(self, context):
-        return parse_opt(context, self.parser, consume=self.consume)
+    @classmethod
+    def parse1(self, context, parser):
+        try:
+            return parser.parse(context)
+        except NoMatch:
+            return NullChunk(context.src, context.pos)
+
 
 class Many(Parser):
 
-    def __init__(self, parser, min_count=0, max_count=None, consume=True):
-        super().__init__(consume=consume)
-        self.parser = parser
-        self.min_count = min_count
-        self.max_count = max_count
+    def __init__(self, parser, min_count=0, max_count=None):
+        super().__init__(parser, min_count=min_count, max_count=max_count)
 
-    def parse1(self, context):
-        return parse_many(context, self.parser, min_count=self.min_count, max_count=self.max_count, consume=self.consume)
+    @classmethod
+    def parse1(self, context, parser, min_count=0, max_count=None):
+        start_pos = context.pos
+        chunks = []
+        count = 0
+        last_pos = context.pos
+        while True:
+            if max_count and count >= max_count:
+                break
+            try:
+                chunk = parser.parse(context)
+            except NoMatch:
+                break
+            # Stop if the last chunk didn't advance current position
+            # to avoid looping indefinitely
+            if context.pos == last_pos:
+                break
+            chunks.append(chunk)
+            count += 1
+            last_pos = context.pos
+        if count < min_count:
+            raise NoMatch
+        return Chunk(context.src, start_pos, context.pos, children=chunks)
 
 
 class Regex(Parser):
 
-    def __init__(self, pattern, consume=True):
-        super().__init__(consume=consume)
-        self.pattern = pattern if isinstance(pattern, re.Pattern) else re.compile(pattern, re.MULTILINE)
+    def __init__(self, pattern):
+        super().__init__(pattern if isinstance(pattern, re.Pattern) else re.compile(pattern, re.MULTILINE))
 
-    def parse1(self, context):
-        return parse_regex(context, self.pattern, consume=self.consume)
+    @classmethod
+    def parse1(self, context, pattern):
+        start_pos = context.pos
+        match = pattern.match(context.src, pos=start_pos)
+        if not match:
+            raise NoMatch
+        end_pos = match.end()
+        context.pos = end_pos
+        return RegexChunk(context.src, start_pos, end_pos, match)
 
 
 class Exact(Parser):
 
-    def __init__(self, text, consume=True):
-        super().__init__(consume=consume)
-        self.text = text
+    def __init__(self, text):
+        super().__init__(text)
 
-    def parse1(self, context):
-        return parse_exact(context, self.text, consume=self.consume)
-
+    @classmethod
+    def parse1(self, context, text):
+        start_pos = context.pos
+        end_pos = start_pos + len(text)
+        if context.src[start_pos:end_pos] != text:
+            raise NoMatch
+        context.pos = end_pos
+        return TextChunk(context.src, start_pos, end_pos, text)
 

@@ -1,6 +1,6 @@
 import re
 import html
-from .parse import NoMatch, parse_any, parse_many, parse_opt, parse_exact, parse_regex, Parser, Any, Many, Opt, Regex, Exact, Chunk, TextChunk
+from .parse import NoMatch, Parser, Any, Many, Opt, Regex, Exact, Chunk, TextChunk
 from .render import RenderMixin
 
 #=============================================================================
@@ -82,10 +82,7 @@ class BaseElement(RenderMixin, Chunk):
     def is_whitespace(self):
         return all(child.is_whitespace() for child in self.children)
 
-
-class BaseElementParser(Parser):
-
-    def parse2(self, context, chunk):
+    def parse3(self, context):
 
         def make_group(inlines):
             # Concatenate consecutive Text chunks, and bundle all chunks into
@@ -103,56 +100,53 @@ class BaseElementParser(Parser):
                 return False
             return True
 
-        if len(chunk.children) > 1:
-            children = chunk.children
+        if len(self.children) > 1:
+            group_class = context.get_stack('main').get('inline_group_class', InlineGroup)
+            children = self.children
             # Children of Unknown elements become my own children
             children = promote_children(children, lambda c: isinstance(c, Unknown))
             # Children of inline groups become my own children
-            group_class = context.get_stack('main').get('inline_group_class', InlineGroup)
             children = promote_children(children, lambda c: isinstance(c, group_class))
             # Group and concatenate consecutive inline elements
             children = group_chunks(children, lambda c: c.inline, make_group)
             # Discard empty groups
-            chunk.children = [child for child in children if keep(child)]
-        return chunk
+            self.children = [child for child in children if keep(child)]
 
 
-def parse_block(context):
-    parsers = context.get_stack('main').get('block_parsers', [])
-    chunk = parse_any(context, *parsers)
-    chunk.inline = False
-    return chunk
+class BaseElementParser(Parser):
+    pass
 
 
 class BlockParser(Parser):
 
-    def parse1(self, context):
-        return parse_block(context)
-
-
-def parse_inline(context):
-    parsers = context.get_stack('main').get('inline_parsers', [])
-    chunk = parse_any(context, *parsers)
-    chunk.inline = True
-    return chunk
+    @classmethod
+    def parse1(cls, context):
+        parsers = context.get_stack('main').get('block_parsers', [])
+        chunk = Any.parse(context, *parsers)
+        chunk.inline = False
+        return chunk
 
 
 class InlineParser(BaseElementParser):
 
-    def parse1(self, context):
-        return parse_inline(context)
+    @classmethod
+    def parse1(cls, context):
+        parsers = context.get_stack('main').get('inline_parsers', [])
+        chunk = Any.parse(context, *parsers)
+        chunk.inline = True
+        return chunk
 
 
-def parse_inline_group(context):
-    return parse_many(context, parse_inline, min_count=1)
+class InlineGroupParser(BaseElementParser):
+
+    @classmethod
+    def parse1(cls, context):
+        return Many.parse(context, InlineParser, min_count=1)
 
 
 class InlineGroup(BaseElement):
 
     inline = True
-
-    def parse1(self, context):
-        return parse_inline_group(context)
 
 
 class BaseText(BaseElement):
@@ -175,16 +169,6 @@ class BaseText(BaseElement):
         return f"{self.__class__.__name__}[{self.start_pos}:{self.end_pos}] {repr(self.text)}"
 
 
-text_pattern = re.compile(rf"(\\\\|\\`|\\{esc_element_open}|\\{esc_element_close}|[^`{esc_element_open}{esc_element_close}])+")
-
-def parse_text(context):
-    match = parse_regex(context, text_pattern).match
-    return Text(context.src, match.start(0), match.end(0), unescape(match[0],
-        ESC_BACKSLASH,
-        ESC_BACKTICK,
-        ESC_ELEMENT_OPEN,
-        ESC_ELEMENT_CLOSE,
-    ))
 
 
 class Text(BaseText):
@@ -194,8 +178,17 @@ class Text(BaseText):
 
 class TextParser(Parser):
 
-    def parse1(self, context):
-        return parse_text(context)
+    pattern = re.compile(rf"(\\\\|\\`|\\{esc_element_open}|\\{esc_element_close}|[^`{esc_element_open}{esc_element_close}])+")
+
+    @classmethod
+    def parse1(cls, context):
+        match = Regex.parse(context, cls.pattern).match
+        return Text(context.src, match.start(0), match.end(0), unescape(match[0],
+            ESC_BACKSLASH,
+            ESC_BACKTICK,
+            ESC_ELEMENT_OPEN,
+            ESC_ELEMENT_CLOSE,
+        ))
 
 
 class VerbatimParser(Parser):
@@ -203,35 +196,29 @@ class VerbatimParser(Parser):
     pattern = re.compile(r"(`+)(.+?)\1", re.DOTALL)
                      # Non-greedy ^
 
-    def parse1(self, context):
-        match = parse_regex(context, self.pattern).match
+    @classmethod
+    def parse1(cls, context):
+        match = Regex.parse(context, cls.pattern).match
         return Text(context.src, match.start(2), match.end(2), match[2])
 
 
-def parse_part(context):
-    return parse_any(context,
-        parse_block,
-        parse_inline,
-        TextParser(),
-        UnknownParser()
-    )    
+class PartParser(Parser):
 
-def parse_parts(context):
-    return parse_many(context, parse_part)
-
-
-class _PartsParser(Parser):
-
-    def parse1(self, context):
-        return parse_parts(context)
+    @classmethod
+    def parse1(cls, context):
+        return Any.parse(context,
+            BlockParser,
+            InlineParser,
+            TextParser,
+            UnknownParser,
+        )
 
 
-def parse_unknown(context):
-    start_pos = context.pos
-    parse_exact(context, ELEMENT_OPEN)
-    children = parse_parts(context).children
-    parse_opt(context, lambda context: parse_exact(context, ELEMENT_CLOSE))
-    return Unknown(context.src, start_pos=start_pos, end_pos=context.pos, children=children)
+class PartsParser(Parser):
+
+    @classmethod
+    def parse1(cls, context):
+        return Many.parse(context, PartParser)
 
 
 class Unknown(BaseElement):
@@ -240,16 +227,26 @@ class Unknown(BaseElement):
 
 class UnknownParser(BaseElementParser):
 
-    def parse1(self, context):
-        return parse_unknown(context)
+    open_parser = Exact(ELEMENT_OPEN)
+    close_parser = Opt(Exact(ELEMENT_CLOSE))
+    parts_parser = PartsParser()
+
+    @classmethod
+    def parse1(cls, context):
+        start_pos = context.pos
+        cls.open_parser.parse(context)
+        children = cls.parts_parser.parse(context).children
+        cls.close_parser.parse(context)
+        return Unknown(context.src, start_pos=start_pos, end_pos=context.pos, children=children)
 
 
 class DoubleQuotedParser(Parser):
     
     pattern = re.compile(r'\s*"((?:\\\\|\\"|[^"])*)"')
 
-    def parse1(self, context):
-        match = parse_regex(context, self.pattern).match
+    @classmethod
+    def parse1(cls, context):
+        match = Regex.parse(context, cls.pattern).match
         return TextChunk(context.src, match.start(1), match.end(1), unescape(match[1],
             ESC_BACKSLASH,
             ESC_DOUBLE_QUOTE
@@ -260,8 +257,9 @@ class SingleQuotedParser(Parser):
     
     pattern = re.compile(r"\s*'((?:\\\\|\\'|[^'])*)'")
 
-    def parse1(self, context):
-        match = parse_regex(context, self.pattern).match
+    @classmethod
+    def parse1(cls, context):
+        match = Regex.parse(context, cls.pattern).match
         return TextChunk(context.src, match.start(1), match.end(1), unescape(match[1],
             ESC_BACKSLASH,
             ESC_SINGLE_QUOTE
@@ -272,8 +270,9 @@ class UnquotedParser(Parser):
     
     pattern = re.compile(rf"""\s*((?:\\"|\\'\\{esc_element_close}|\\{esc_element_split}|[^\s{esc_element_close}{esc_element_split}])*)\s*""")
 
-    def parse1(self, context):
-        match = parse_regex(context, self.pattern).match
+    @classmethod
+    def parse1(cls, context):
+        match = Regex.parse(context, cls.pattern).match
         return TextChunk(context.src, match.start(1), match.end(1), unescape(match[1],
             ESC_BACKSLASH,
             ESC_SINGLE_QUOTE,
@@ -287,18 +286,19 @@ class ArgumentParser(Parser):
 
     name_parser = Regex(rf"\s*([A-Za-z0-9_]+)\s*=")
     value_parser = Any(
-        DoubleQuotedParser(),
-        SingleQuotedParser(),
-        UnquotedParser(),
+        DoubleQuotedParser,
+        SingleQuotedParser,
+        UnquotedParser,
     )
 
-    def parse1(self, context):
+    @classmethod
+    def parse1(cls, context):
         start_pos = context.pos
         try:
-            name = self.name_parser(context).match[1].lower()
+            name = cls.name_parser.parse(context).match[1].lower()
         except NoMatch:
             name = None
-        value = self.value_parser(context).text
+        value = cls.value_parser.parse(context).text
         return Argument(context.src, start_pos, context.pos, name, value)
 
 
@@ -321,11 +321,7 @@ bool_arguments = {
     '0': False,
 }
 
-class Arguments:
-
-    # This class doesn't need to descend from Chunk, because arguments won't
-    # be rendered (even though they affect rendered output), and do not need
-    # to be children of their parent element.
+class Arguments(Chunk):
 
     def __init__(self, arg_chunks=None):
         self.by_name = {}
@@ -382,10 +378,11 @@ class Arguments:
 
 class ArgumentsParser(Parser):
 
-    parser = Many(ArgumentParser())
+    parser = Many(ArgumentParser)
 
-    def parse1(self, context):
-        arg_chunks = self.parser(context).children
+    @classmethod
+    def parse1(cls, context):
+        arg_chunks = cls.parser.parse(context).children
         return Arguments(arg_chunks)
 
 
@@ -411,71 +408,75 @@ class ElementParser(BaseElementParser):
     name_parser = Regex(r'\s*([A-Za-z0-9_]+)')
     split_parser = Regex(rf'\s*{esc_element_split}')
     close_parser = Regex(rf'\s*({esc_element_close}|$)')
-    arguments_parser = ArgumentsParser()
-    child_parser = _PartsParser()
+    arguments_parser = ArgumentsParser
+    child_parser = PartsParser
 
-    def parse1(self, context):
+    @classmethod
+    def parse1(cls, context):
         start_pos = context.pos
-        self.open_parser(context)
+        cls.open_parser.parse(context)
         arguments = {}
-        name = self.parse_name(context, arguments)
+        name = cls.parse_name(context, arguments)
         arguments['name'] = name
-        arguments = self.parse_arguments(context, arguments) or arguments
+        arguments = cls.parse_arguments(context, arguments) or arguments
         try:
-           self.split_parser(context)
+           cls.split_parser.parse(context)
         except NoMatch:
             children = []
         else:
-            children = self.parse_children(context, arguments)
+            children = cls.parse_children(context, arguments)
         arguments['children'] = children
-        self.close_parser(context)
-        return self.make_element(context.src, start_pos, context.pos, **arguments)
+        cls.close_parser.parse(context)
+        return cls.make_element(context.src, start_pos, context.pos, **arguments)
 
-    def parse_name(self, context, arguments):
-        name = self.name_parser(context).match[1]
-        if not hasattr(self, '_names'):
-            self._names = self.get_names()
-        n = name if self.name_case_sensitive else name.lower()
-        if not n in self._names:
+    @classmethod
+    def parse_name(cls, context, arguments):
+        name = cls.name_parser.parse(context).match[1]
+        if not hasattr(cls, '_names'):
+            cls._names = cls.get_names()
+        n = name if cls.name_case_sensitive else name.lower()
+        if not n in cls._names:
             raise NoMatch
         return name
 
-    def parse_arguments(self, context, arguments):
-        arguments.update(self.arguments_parser(context).get_as_dict())
+    @classmethod
+    def parse_arguments(cls, context, arguments):
+        arguments.update(cls.arguments_parser.parse(context).get_as_dict())
         return arguments
 
-    def parse_children(self, context, arguments):
-        children = self.get_child_parser(context)(context).children
-        if children and not self.allow_children:
+    @classmethod
+    def parse_children(cls, context, arguments):
+        children = cls.get_child_parser(context).parse(context).children
+        if children and not cls.allow_children:
             raise NoMatch
         return children
 
-    def get_child_parser(self, context):
-        return self.child_parser
+    @classmethod
+    def get_child_parser(cls, context):
+        return cls.child_parser
 
-    def get_names(self):
-        if self.name_case_sensitive:
-            names = [name for name in self.names]
+    @classmethod
+    def get_names(cls):
+        if cls.name_case_sensitive:
+            names = [name for name in cls.names]
         else:
-            names = [name.lower() for name in self.names]
+            names = [name.lower() for name in cls.names]
         return names
 
-    def make_element(self, src, start_pos, end_pos, **arguments):
-        return self.element_class(src, start_pos, end_pos, **arguments)
+    @classmethod
+    def make_element(cls, src, start_pos, end_pos, **arguments):
+        return cls.element_class(src, start_pos, end_pos, **arguments)
 
 
 class Document(BaseElement):
     pass
 
 
-def parse_document(context):
-    parts = parse_parts(context)
-    return Document(context.src, parts.start_pos, parts.end_pos, parts.children)
-
-
 class DocumentParser(BaseElementParser):
 
-    def parse1(self, context):
-        return parse_document(context)
+    @classmethod
+    def parse1(cls, context):
+        parts = PartsParser.parse(context)
+        return Document(context.src, parts.start_pos, parts.end_pos, parts.children)
 
 

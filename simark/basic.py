@@ -35,8 +35,9 @@ class GetVarParser(ElementParser):
     allow_children = False
     element_class = GetVar
 
-    def parse_arguments(self, context, arguments):
-        args = self.arguments_parser.parse(context)
+    @classmethod
+    def parse_arguments(cls, context, arguments):
+        args = cls.arguments_parser.parse(context)
         var_name = args.get('var', 0)
         if not var_name:
             raise NoMatch
@@ -78,15 +79,17 @@ class SetVarParser(ElementParser):
         )
     )
 
-    def parse_arguments(self, context, arguments):
-        args = self.arguments_parser.parse(context)
+    @classmethod
+    def parse_arguments(cls, context, arguments):
+        args = cls.arguments_parser.parse(context)
         var_name = args.get('var', 0)
         if not var_name:
             raise NoMatch
         arguments['var_name'] = var_name
 
-    def parse_children(self, context, arguments):
-        return self.child_parser.parse(context).children
+    @classmethod
+    def parse_children(cls, context, arguments):
+        return cls.child_parser.parse(context).children
 
 
 #=============================================================================
@@ -111,8 +114,9 @@ class IncVarParser(ElementParser):
     element_class = IncVar
     allow_children = False
 
-    def parse_arguments(self, context, arguments):
-        args = self.arguments_parser.parse(context)
+    @classmethod
+    def parse_arguments(cls, context, arguments):
+        args = cls.arguments_parser.parse(context)
         var_name = args.get('var', 0)
         if not var_name:
             raise NoMatch
@@ -191,8 +195,9 @@ class SectionParser(ElementParser):
     names = ['section', 's']
     element_class = Section
 
-    def parse_arguments(self, context, arguments):
-        args = self.arguments_parser.parse(context)
+    @classmethod
+    def parse_arguments(cls, context, arguments):
+        args = cls.arguments_parser.parse(context)
         arguments['start_num'] = args.get_int('start')
 
 
@@ -237,8 +242,9 @@ class HeadingParser(ElementParser):
     names = ['h']
     element_class = Heading
 
-    def parse_arguments(self, context, arguments):
-        args = self.arguments_parser.parse(context)
+    @classmethod
+    def parse_arguments(cls, context, arguments):
+        args = cls.arguments_parser.parse(context)
         arguments['level'] = args.get_int('level', 0)
         arguments['show_numbers'] = args.get_bool('numbers', default=True)
 
@@ -314,13 +320,15 @@ class ListParser(ElementParser):
         )
     )
 
-    def parse_arguments(self, context, arguments):
-        args = self.arguments_parser.parse(context)
+    @classmethod
+    def parse_arguments(cls, context, arguments):
+        args = cls.arguments_parser.parse(context)
         arguments['style'] = args.get('style')
         arguments['start_num'] = args.get_int('start', pos=None, default=1, invalid=1)
 
-    def parse_children(self, context, arguments):
-        children = self.child_parser.parse(context).children
+    @classmethod
+    def parse_children(cls, context, arguments):
+        children = cls.child_parser.parse(context).children
         return [child for child in children if isinstance(child, ListItem)]
 
 
@@ -344,8 +352,9 @@ class LinkParser(ElementParser):
     names = ['link']
     element_class = Link
 
-    def parse_arguments(self, context, arguments):
-        args = self.arguments_parser.parse(context)
+    @classmethod
+    def parse_arguments(cls, context, arguments):
+        args = cls.arguments_parser.parse(context)
         url = args.get('url', 0)
         if not url:
             raise NoMatch
@@ -406,8 +415,9 @@ class CodeParser(ElementParser):
                 )
             )
 
-    def parse_children(self, context, arguments):
-        children = self.parser.parse(context).children
+    @classmethod
+    def parse_children(cls, context, arguments):
+        children = cls.parser.parse(context).children
         # Remove leading and trailing empty lines
         if children:
             text = ''
@@ -459,8 +469,9 @@ class FloatParser(ElementParser):
     names = ['float']
     element_class = Float
 
-    def parse_arguments(self, context, arguments):
-        args = self.arguments_parser.parse(context)
+    @classmethod
+    def parse_arguments(cls, context, arguments):
+        args = cls.arguments_parser.parse(context)
         align = args.get('align', 0, default='l')
         if not align in float_styles:
             raise NoMatch
@@ -503,8 +514,9 @@ class AlignParser(ElementParser):
     names = ['block']
     element_class = Align
 
-    def parse_arguments(self, context, arguments):
-        args = self.arguments_parser.parse(context)
+    @classmethod
+    def parse_arguments(cls, context, arguments):
+        args = cls.arguments_parser.parse(context)
         align = args.get('align', 0)
         if not align in align_styles:
             raise NoMatch
