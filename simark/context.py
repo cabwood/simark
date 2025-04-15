@@ -1,63 +1,44 @@
 """
 Implementation of a simple LIFO stack that uses dictionaries to store state
-information, and a context object that employs this stack to keep track of
-its current state.
+information. Values may be inheritable from prior frames.
 """
 
-class Stack:
 
-    def __init__(self, name, **kwargs):
-        self.name = name
-        self.items = [kwargs]
-        self.reset()
+class Stack:
+    def __init__(self, **kwargs):
+        self.frames = [kwargs]  # Root frame
 
     def reset(self):
-        # Keep only initial state
-        self.items = self.items[:1]
+        """Reset stack to initial state."""
+        del self.frames[1:]
 
     @property
     def top(self):
-        return self.items[-1]
+        return self.frames[-1]
 
-    def get(self, name, default=None):
-        return self.top.get(name, default)
+    def get(self, key, inherit=True, default=None):
+        """Retrieve the value of an element. If inherit is False, retrieve a
+        value from only the top-most frame, otherwise retrieve the most recent
+        value, searching backwards through the stack."""
+        if not inherit:
+            top = self.frames[-1]
+            return top[key] if key in top else default
+        # Retrieve the most recent value
+        return next((frame[key] for frame in reversed(self.frames) if key in frame), default)
 
-    def set(self, name, value):
-        self.top[name] = value
+    def set(self, key, value):
+        """Set a value in the current frame."""
+        # Replace references to mutable objects with copies
+        self.top[key] = value if not isinstance(value, (dict, list, set)) else value.copy()
 
     def push(self, **kwargs):
-        # Top dictionary is a shallow copy of the dictionary underneath it,
-        # updated with new or additional key/value pairs from kwargs.
-        # Don't modify mutable members, like lists, since they are shared
-        # by all stack entries, and they'll all be changed.
-        item = self.top.copy()
-        item.update(kwargs)
-        self.items.append(item)
+        """Push a new frame with new values."""
+        self.frames.append(kwargs)
 
     def pop(self):
-        # Can't pop bottom item
-        if len(self.items) == 1:
+        """Pop the most recent frame, ensuring at least one frame remains."""
+        if len(self.frames) == 1:
             raise ValueError(f"Illegal pop of empty stack {repr(self.name)}")
-        return self.items.pop()
+        return self.frames.pop()
 
-
-class BaseContext:
-
-    def __init__(self, **kwargs):
-        self.stacks = {'main': Stack('main', **kwargs)}
-
-    def get_stack(self, stack_name):
-        stack = self.stacks.get(stack_name)
-        if stack is None:
-            stack = Stack(stack_name)
-            self.stacks[stack_name] = stack
-        return stack
-
-    def push(self, stack_name, **kwargs):
-        stack = self.get_stack(stack_name)
-        stack.push(**kwargs)
-
-    def pop(self, stack_name):
-        stack = self.stacks[stack_name]
-        return stack.pop()
 

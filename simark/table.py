@@ -1,19 +1,12 @@
 import html
-from .parse import Parser, NoMatch, Leave, Many, Any, Regex, Chunk
-from .core import BlockParser, InlineParser, UnknownParser, ElementParser, Element, Text, \
+import itertools
+from .parse import Parser, NoMatch, Leave, Opt, All, Literal, Many, Any, Regex, Element
+from .core import Verbatim, Block, Inline, Unknown, Element, BaseText, Text, \
     unescape, esc_element_open, esc_element_close, \
     ESC_BACKSLASH, ESC_BACKTICK, ESC_ELEMENT_OPEN, ESC_ELEMENT_CLOSE
 
 
-all_whitespace_parser = Regex(r'\s*')
-no_nl_whitespace_parser = Regex(r'[^\S\n]*')
-
-def parse_whitespace(context):
-    allow_newline = context.get_stack('table').get('allow_newline', True)
-    if allow_newline:
-        return all_whitespace_parser.parse(context)
-    return no_nl_whitespace_parser.parse(context)
-
+skip_whitespace = Regex('\s*')
 
 table_border_classes = {
     '0': ('bt0', 'bb0', 'bl0', 'br0'),
@@ -67,6 +60,27 @@ def fix_aligns(s):
     return ''.join(c if c in table_align_classes else '_' for c in s)
 
 
+
+class ShortArgs(Element):
+
+    arg_parser = Many(Regex(r'([^\s|,;=-]*),?'))
+
+    def __init__(self, src, start_pos, end_pos, *args):
+        super().__init__(src, start_pos, end_pos)
+        self.args = args
+
+    @classmethod
+    def parse1(cls, context):
+        start_pos = context.pos
+        chunks = cls.arg_parser.parse(context).children
+        return cls(context.src, start_pos, context.pos, *[c.match[1] for c in chunks])
+
+    def get_arg(self, index):
+        if index < len(self.args):
+            return self.args[index]
+        return ''
+
+
 class _Formats:
 
     def __init__(self):
@@ -103,38 +117,38 @@ class TableFormats:
         self.align = _Formats()
 
 
-class TableTextParser(Parser):
+class TableText(BaseText):
     """
-    Like TextParser, except bar '|' and possibly newline terminates the text.
+    Text parser that forbids bar.
     """
 
-    all_parser = Regex(rf"(\\\\|\\`|\\\||\\{esc_element_open}|\\{esc_element_close}|[^|`{esc_element_open}{esc_element_close}])+")
-    no_nl_parser = Regex(rf"(\\\\|\\`|\\\||\\{esc_element_open}|\\{esc_element_close}|[^\n|`{esc_element_open}{esc_element_close}])+")
+    forbid_nl_parser = Regex(rf"(\\\\|\\`|\\\||\\{esc_element_open}|\\{esc_element_close}|[^\n|`{esc_element_open}{esc_element_close}])+")
+    permit_nl_parser = Regex(rf"(\\\\|\\`|\\\||\\{esc_element_open}|\\{esc_element_close}|[^|`{esc_element_open}{esc_element_close}])+")
 
     @classmethod
     def parse1(cls, context):
-        allow_newline = context.get_stack('table').get('allow_newline', True)
-        if allow_newline:
-            match = cls.all_parser.parse(context).match
+        if context.get_state('table', 'newlines'):
+            match = cls.permit_nl_parser.parse(context).match
         else:
-            match = cls.no_nl_parser.parse(context).match
+            match = cls.forbid_nl_parser.parse(context).match
         return Text(context.src, match.start(0), match.end(0), unescape(match[0],
             ESC_BACKSLASH,
             ESC_BACKTICK,
             ESC_ELEMENT_OPEN,
             ESC_ELEMENT_CLOSE,
-            ('\\|', '|'),
+            (r'\|', '|'),
         ))
 
 
-class TablePartsParser(Parser):
+class TableParts(Parser):
 
     parser = Many(
         Any(
-            BlockParser(),
-            InlineParser(),
-            TableTextParser(),
-            UnknownParser(),
+            Verbatim,
+            Block,
+            Inline,
+            Unknown,
+            TableText,
         )
     )
 
@@ -143,7 +157,22 @@ class TablePartsParser(Parser):
         return cls.parser.parse(context)
 
 
+class ShortCaption(Parser):
+
+    start_parser = Leave(Regex(r'[^\s\|]'))
+    child_parser = TableParts
+
+    @classmethod
+    def parse1(cls, context):
+        cls.start_parser.parse(context)
+        start_pos = context.pos
+        children = cls.child_parser.parse(context).children
+        return TableCaption(context.src, start_pos, context.pos, children=children)
+
+
 class TableCaption(Element):
+
+    names = ['caption']
 
     def __init__(self, src, start_pos, end_pos, show_numbers=None, visible=None, **arguments):
         super().__init__(src, start_pos, end_pos, **arguments)
@@ -166,46 +195,13 @@ class TableCaption(Element):
         return html_out
 
 
-class _CaptionShortParser(Parser):
+class AnyCaption(Parser):
 
-    start_parser = Leave(Regex(r'[^\s\|]'))
-    end_parser = Regex(r'(\n|$)')
-    child_parser = TablePartsParser()
+    parser = Any(TableCaption, ShortCaption)
 
     @classmethod
     def parse1(cls, context):
-        cls.start_parser.parse(context)
-        context.push('table', allow_newline=False)
-        try:
-            start_pos = context.pos
-            children = cls.child_parser.parse(context).children
-            cls.end_parser.parse(context)
-            return TableCaption(context.src, start_pos, context.pos, children=children)
-        finally:
-            context.pop('table')
-
-
-class _CaptionElementParser(ElementParser):
-
-    names = ['caption']
-    element_class = TableCaption
-
-    @classmethod
-    def parse_arguments(cls, context, arguments):
-        args = cls.arguments_parser.parse(context)
-        arguments['show_numbers'] = args.get_bool('numbers')
-
-
-class TableCaptionParser(Parser):
-
-    content_parser = Any(
-        _CaptionElementParser(),
-        _CaptionShortParser(),
-    )
-
-    @classmethod
-    def parse1(cls, context):
-        return cls.content_parser.parse(context)
+        return cls.parser.parse(context)
 
 
 class _BaseTableElement(Element):
@@ -213,6 +209,7 @@ class _BaseTableElement(Element):
     Ancenstor class for tables, rowsets, rows and cells, handling common
     formatting features that they all share.
     """
+
 
     default_row_borders = ''
     default_col_borders = ''
@@ -248,7 +245,36 @@ class _BaseTableElement(Element):
         pass
 
 
+class ShortCell(Parser):
+    """
+    Finds and returns a TableCell parsed from bar '|' delimited content.
+    """
+
+    args_parser = Regex(r'(\|*)(~*)([1-9]?)')
+    child_parser = TableParts
+
+    @classmethod
+    def parse_lead(cls, context):
+        args = cls.args_parser.parse(context)
+        col_span = len(args.match[1])
+        row_span = max(1, len(args.match[2]))
+        align = args.match[3] or '_'
+        return row_span, col_span, align
+
+    @classmethod
+    def parse1(cls, context):
+        start_pos = context.pos
+        row_span, col_span, align = cls.parse_lead(context)
+        children = cls.child_parser.parse(context).children
+        return TableCell(context.src, start_pos, context.pos, children=children, \
+            align=align, col_span=col_span, row_span=row_span, short=True)
+
+
 class TableCell(_BaseTableElement):
+
+    names = ['cell']
+    lead_parser = Regex(r'\|?[^\S\n]*')
+    child_parser = TableParts
 
     def __init__(self, src, start_pos, end_pos, row_borders=None, col_borders=None, align=None, \
             col_span=None, row_span=None, short=False, **arguments):
@@ -256,6 +282,31 @@ class TableCell(_BaseTableElement):
         self.col_span = 1 if col_span is None else col_span
         self.row_span = 1 if row_span is None else row_span
         self.short = short
+
+    @classmethod
+    def parse1(cls, context):
+        # Skip the optional bar prefix prior to the {cell} proper
+        cls.lead_parser.parse(context)
+        # Inside a {cell} construct newlines are permitted
+        return super().parse1(context)
+
+    @classmethod
+    def parse_children(cls, context, arguments):
+        # Contents of a {cell} construct may contain newlines
+        context.push_state('table', newlines=True)
+        try:
+            return cls.child_parser.parse(context).children
+        finally:
+            context.pop_state('table')
+
+    @classmethod
+    def parse_arguments(cls, context, arguments):
+        args = cls.arguments_parser.parse(context)
+        arguments['row_borders'] = args.get('row_borders')
+        arguments['col_borders'] = args.get('col_borders')
+        arguments['align'] = args.get('align')
+        arguments['col_span'] = args.get_int('col_span')
+        arguments['row_span'] = args.get_int('row_span')
 
     def setup_enter(self, context):
         # Render children compact
@@ -265,7 +316,7 @@ class TableCell(_BaseTableElement):
         context.pop('main')
 
     def render_self(self, context):
-        head = context.get_stack('table').get('head', False)
+        head = context.get_state('table', 'head')
         tag = 'th' if head else 'td'
         classes = []
         format = self.formats.row_borders.get_format(self.row_index, self.col_index)
@@ -294,62 +345,63 @@ class TableCell(_BaseTableElement):
         return self.row_index, self.col_index, self.row_span, self.col_span
 
 
-class _CellShortParser(Parser):
-    """
-    Finds and returns a TableCell parsed from bar '|' delimited content.
-    """
+class ManyCells(Parser):
 
-    lead_parser = Regex(r'(\|+)(~*)([1-9]?)')
-    child_parser = TablePartsParser()
+    permit_nl_parser = Many(Any(TableCell, ShortCell, Regex(r'\s*')))
+    forbid_nl_parser = Many(Any(TableCell, ShortCell, Regex(r'[^\S\n]*')))
+
+    @classmethod
+    def parse1(cls, context):
+        if context.get_state('table', 'newlines'):
+            return cls.permit_nl_parser.parse(context)
+        return cls.forbid_nl_parser.parse(context)
+        
+    @classmethod
+    def parse2(cls, context, chunk):
+        cells = [c for c in chunk.children if isinstance(c, TableCell)]
+        if not cells:
+            raise NoMatch
+        chunk.children = cells
+        return chunk
+
+
+class ShortRow(Parser):
+
+    lead_parser = Literal('+')
+    tail_parser = Regex(r'-+\+?')
+    bar_parser = Leave(Literal('|'))
+    cells_parser = ManyCells
+
+    @classmethod
+    def parse_lead(cls, context):
+        cls.lead_parser.parse(context)
+        args = ShortArgs.parse(context)
+        row_borders = args.get_arg(0)
+        col_borders = args.get_arg(1)
+        align = args.get_arg(2)
+        cls.tail_parser.parse(context)
+        return row_borders, col_borders, align
 
     @classmethod
     def parse1(cls, context):
         start_pos = context.pos
-        parse_whitespace(context)
         try:
-            lead = cls.lead_parser.parse(context)
+            row_borders, col_borders, align = cls.parse_lead(context)
+            skip_whitespace.parse(context)
         except NoMatch:
-            # Leader was absent or not found, so set default cell properties
-            lead = None
-            col_span = 1
-            row_span = 1
-            align = '_'
-        else:
-            # Leader present, set cell properties according to leader content
-            col_span = len(lead.match[1])
-            row_span = max(1, len(lead.match[2]))
-            align = lead.match[3] if lead.match[3] else '_'
-        parse_whitespace(context)
-        children = cls.child_parser.parse(context).children
-        return TableCell(context.src, start_pos, context.pos, children=children, \
-            align=align, col_span=col_span, row_span=row_span, short=True)
+            row_borders = ''
+            col_borders = ''
+            align = ''
+        # Shorthand rows require that the first cell have a leading bar
+        cls.bar_parser.parse(context)
+        cells = cls.cells_parser.parse(context).children
+        return TableRow(context.src, start_pos, context.pos, children=cells, row_borders=row_borders, col_borders=col_borders, align=align)
 
 
-class _CellElementParser(ElementParser):
-    """
-    Finds and returns a TableCell parsed from a {cell} construct.
-    """
+class TableRow(_BaseTableElement):
 
-    names = ['cell']
-    element_class = TableCell
-
-    lead_parser = Regex(r'\|?[^\S\n]*')
-
-    @classmethod
-    def parse1(cls, context):
-        parse_whitespace(context)
-        # Look for an optional bar prefix prior to the {cell} proper
-        cls.lead_parser.parse(context)
-        return super().parse1(context)
-
-    @classmethod
-    def parse_children(cls, context, arguments):
-        # Contents of a {cell} construct may always contain newlines
-        context.push('table', allow_newline=True)
-        try:
-            return super().parse_children(context, arguments)
-        finally:
-            context.pop('table')
+    names = ['row']
+    cells_parser = ManyCells
 
     @classmethod
     def parse_arguments(cls, context, arguments):
@@ -357,23 +409,31 @@ class _CellElementParser(ElementParser):
         arguments['row_borders'] = args.get('row_borders')
         arguments['col_borders'] = args.get('col_borders')
         arguments['align'] = args.get('align')
-        arguments['col_span'] = args.get_int('col_span')
-        arguments['row_span'] = args.get_int('row_span')
-
-
-class TableCellParser(Parser):
-
-    content_parser = Any(
-        _CellElementParser(),
-        _CellShortParser(),
-    )
 
     @classmethod
-    def parse1(cls, context):
-        return cls.content_parser.parse(context)
+    def parse_children(cls, context, arguments):
+        # {row} elements may contain newline characters in their child cells,
+        # since they are not terminated by newline, and the first cell isn't
+        # required to have a leading bar.
+        context.push_state('table', newlines=True)
+        try:
+            return cls.cells_parser.parse(context).children
+        finally:
+            context.pop_state('table')
 
-
-class TableRow(_BaseTableElement):
+    def parse3(self, context):
+        if not self.children:
+            raise NoMatch
+        # Drop the last cell if it's an empty shorthand one. For aesthetic
+        # reasons, a shorthand row can be terminated with '|' without creating
+        # a cell, but if the cell is explicity defined using {cell}, then
+        # we can assume that the trailing cell is intentional.
+        last = self.children[-1]
+        if last.short and not last.children:
+            del self.children[-1]
+        if not self.children:
+            raise NoMatch
+        super().parse3(context)
 
     def render_self(self, context):
         class_attr = self.get_class_attr(context)
@@ -390,54 +450,66 @@ class TableRow(_BaseTableElement):
             child.apply_formats(formats)
 
 
-class _CellsParser(Parser):
+class ManyRows(Parser):
 
-    parser = Many(TableCellParser(), min_count=1)
+    parser = Many(Any(TableRow, ShortRow, skip_whitespace))
 
     @classmethod
     def parse1(cls, context):
-        chunk = cls.parser.parse(context)
-        # Drop the last cell if it's an empty shorthand one. For aesthetic
-        # reasons, a shorthand row can be terminated with '|' without creating
-        # a cell, but if the cell is explicity defined using {cell}, then
-        # we can assume that the trailing cell is intentional.
-        last = chunk.children[-1]
-        if last.short and not last.children:
-            del chunk.children[-1]
+        return cls.parser.parse(context)
+
+    @classmethod
+    def parse2(self, context, chunk):
+        chunk.children = [child for child in chunk.children if isinstance(child, TableRow)]
+        if not chunk.children:
+            raise NoMatch
         return chunk
 
 
-class _RowShortParser(Parser):
-    """
-    Finds and returns a TableRow expressed in bar-delimited form.
-    """
+class ShortRowSet(Parser):
 
-    start_parser = Leave(Regex(r'\S'))
-    cells_parser = _CellsParser()
+    lead_parser = Literal('+')
+    tail_parser = Regex(r'=+\+?')
+    rows_parser = ManyRows
+
+    @classmethod
+    def parse_lead(cls, context):
+        cls.lead_parser.parse(context)
+        args = ShortArgs.parse(context)
+        row_borders = args.get_arg(0)
+        col_borders = args.get_arg(1)
+        align = args.get_arg(2)
+        cls.tail_parser.parse(context)
+        return row_borders, col_borders, align
 
     @classmethod
     def parse1(cls, context):
-        cls.start_parser.parse(context)
-        # Shorthand rows are terminated by a newline, so do not permit
-        # newlines in the parsed cells
-        context.push('table', allow_newline=False)
+        start_pos = context.pos
         try:
-            start_pos = context.pos
-            cells = cls.cells_parser.parse(context).children
-            return TableRow(context.src, start_pos, context.pos, children=cells)
-        finally:
-            context.pop('table')
+            row_borders, col_borders, align = cls.parse_lead(context)
+            skip_whitespace.parse(context)
+        except NoMatch:
+            row_borders = ''
+            col_borders = ''
+            align = ''
+        rows = cls.rows_parser.parse(context).children
+        return TableRowSet(context.src, start_pos, context.pos, children=rows, \
+            row_borders=row_borders, col_borders=col_borders, align=align)
 
 
-class _RowElementParser(ElementParser):
-    """
-    Finds and returns a TableRow expressed as a {row} construct.
-    """
+class TableRowSet(_BaseTableElement):
 
-    names = ['row']
-    element_class = TableRow
+    names = ['rowset']
 
-    cells_parser = _CellsParser()
+    default_row_borders = ''
+    default_col_borders = ''
+    default_align = ''
+
+    child_parser = ManyRows
+
+    @classmethod
+    def get_child_parser(cls, context):
+        return cls.child_parser
 
     @classmethod
     def parse_arguments(cls, context, arguments):
@@ -446,32 +518,9 @@ class _RowElementParser(ElementParser):
         arguments['col_borders'] = args.get('col_borders')
         arguments['align'] = args.get('align')
 
-    @classmethod
-    def parse_children(cls, context, arguments):
-        # {row} elements can contain newline characters in their child cells,
-        # since they are not terminated by newline.
-        context.push('table', allow_newline=True)
-        try:
-            return cls.cells_parser.parse(context).children
-        finally:
-            context.pop('table')
-
-
-class TableRowParser(Parser):
-
-    row_parser = Any(
-        _RowElementParser(),
-        _RowShortParser(),
-    )
-
-    @classmethod
-    def parse1(cls, context):
-        return cls.row_parser.parse(context)
-
-
-class TableRowSet(_BaseTableElement):
-
-    names = ['rowset']
+    def parse3(self, context):
+        self.children = [child for child in self.children if isinstance(child, TableRow)]
+        super().parse3(context)
 
     def render_self(self, context):
         return self.render_children(context)
@@ -491,63 +540,13 @@ class TableRowSet(_BaseTableElement):
             child.apply_formats(formats)
 
 
-class TableRowSetParser(ElementParser):
+class AnyRowSet(Parser):
 
-    names = ['rowset']
-    element_class = TableRowSet
-
-    child_parser = Many(
-        Any(
-            TableRowParser(),
-            all_whitespace_parser,
-        )
-    )
-
-    @classmethod
-    def get_child_parser(cls, context):
-        return cls.child_parser
-
-    @classmethod
-    def parse_arguments(cls, context, arguments):
-        args = cls.arguments_parser.parse(context)
-        arguments['row_borders'] = args.get('row_borders')
-        arguments['col_borders'] = args.get('col_borders')
-        arguments['align'] = args.get('align')
-
-    @classmethod
-    def parse_children(cls, context, arguments):
-        children = super().parse_children(context, arguments)
-        return [child for child in children if isinstance(child, TableRow)]
-
-
-class TableRowSetBreak(Chunk):
-
-    default_row_borders = ''
-    default_col_borders = ''
-    default_align = ''
-
-    def __init__(self, src, start_pos, end_pos, row_borders='', col_borders='', align='', **arguments):
-        super().__init__(src, start_pos, end_pos, **arguments)
-        self.row_borders = self.default_row_borders if row_borders is None else row_borders
-        self.col_borders = self.default_col_borders if col_borders is None else col_borders
-        self.align = self.default_align if align is None else align
-
-
-class TableRowSetBreakParser(Parser):
-
-    all_parser = Regex(r'\|?-+([^\s\|-]*)[^\S\n-]*-*[^\S\n]*\|?[^\S\n]*(\n|$)')
+    parser = Any(TableRowSet, ShortRowSet)
 
     @classmethod
     def parse1(cls, context):
-        start_pos = context.pos
-        lead = cls.all_parser.parse(context).match[1]
-        args = lead.split(',')
-        args += [''] * (3 - len(args))
-        return TableRowSetBreak(context.src, start_pos, context.pos,
-            row_borders=args[0],
-            col_borders=args[1],
-            align=args[2],
-        )
+        return cls.parser.parse(context)
 
 
 class _Section(Element):
@@ -564,11 +563,11 @@ class TableHead(_Section):
     html_tag = 'thead'
 
     def render_self(self, context):
-        context.push('table', head=True)
+        context.push_state('table', head=True)
         try:
             return super().render_self(context)
         finally:
-            context.pop('table')
+            context.pop_state('table')
 
 
 class TableBody(_Section):
@@ -586,6 +585,17 @@ class Table(_BaseTableElement):
     default_row_borders = '1*1'
     default_col_borders = '1*1'
 
+    names = ['table']
+
+    child_parser = \
+        Many(
+            Any(
+                AnyRowSet,
+                AnyCaption,
+                skip_whitespace,
+            )
+        )
+
     def __init__(self, src, start_pos, end_pos, show_caption=None, show_numbers=None, row_borders=None, col_borders=None, align=None, head=None, foot=None, **arguments):
         super().__init__(src, start_pos, end_pos, row_borders=row_borders, col_borders=col_borders, align=align, **arguments)
         self.show_caption = True if show_caption is None else show_caption
@@ -593,14 +603,54 @@ class Table(_BaseTableElement):
         self.head_count = 0 if head is None else head
         self.foot_count = 0 if foot is None else foot
 
-    def setup_enter(self, context):
-        if self.show_caption and self.show_numbers:
-            context.table_counter.enter()
+    @classmethod
+    def parse1(cls, context):
+        # By default shorthand cells cannot contain newlines, and must be
+        # preceded by an opening bar.
+        context.push_state('table', newlines=False)
+        try:
+            return super().parse1(context)
+        finally:
+            context.pop_state('table')
 
-    def setup_exit(self, context):
-        if self.show_caption and self.show_numbers:
-            context.table_counter.exit()
+    @classmethod
+    def get_child_parser(cls, context):
+        return cls.child_parser
 
+    @classmethod
+    def parse_arguments(cls, context, arguments):
+        args = cls.arguments_parser.parse(context)
+        arguments['row_borders'] = args.get('row_borders')
+        arguments['col_borders'] = args.get('col_borders')
+        arguments['align'] = args.get('align')
+        arguments['show_caption'] = args.get_bool('caption')
+        arguments['show_numbers'] = args.get_bool('numbers')
+        arguments['head'] = args.get_int('head')
+        arguments['foot'] = args.get_int('foot')
+
+    def parse3(self, context):
+        captions = []
+        rowsets = []
+        for child in self.children:
+            if isinstance(child, TableCaption):
+                captions.append(child)
+            elif isinstance(child, TableRowSet):
+                rowsets.append(child)
+        if not rowsets:
+            raise NoMatch
+        # Concatenate captions if necessary
+        if len(captions) > 1:
+            children = []
+            for caption in captions:
+                children.extend(caption.children)
+            captions[-1].children = children
+        self.caption = None if not captions else captions[-1]
+        self.rowsets = rowsets
+        self.apply_spans()
+        self.apply_formats(TableFormats())
+        self.apply_structure()
+        super().parse3(context)
+    
     def get_bounds_rect(self):
         col_count = 0
         row_count = 0
@@ -723,82 +773,20 @@ class Table(_BaseTableElement):
 
     def render_self(self, context):
         class_attr = self.get_class_attr(context)
-        html_out = self.render_children(context)
+        context.push_state('table', head=False)
+        try:
+            html_out = self.render_children(context)
+        finally:
+            context.pop_state('table')
         indent, newline = self.get_whitespace(context)
         return f'{indent}<table{class_attr}>{newline}{html_out}{newline}{indent}</table>{newline}'
 
+    def setup_enter(self, context):
+        if self.show_caption and self.show_numbers:
+            context.table_counter.enter()
 
-class TableParser(ElementParser):
+    def setup_exit(self, context):
+        if self.show_caption and self.show_numbers:
+            context.table_counter.exit()
 
-    names = ['table']
-    element_class = Table
 
-    child_parser = Many(
-        Any(
-            TableRowSetParser(),
-            TableRowSetBreakParser(),
-            TableCaptionParser(),
-            TableRowParser(),
-            all_whitespace_parser,
-        )
-    )
-
-    @classmethod
-    def get_child_parser(cls, context):
-        return cls.child_parser
-
-    @classmethod
-    def parse_arguments(cls, context, arguments):
-        args = cls.arguments_parser.parse(context)
-        arguments['row_borders'] = args.get('row_borders')
-        arguments['col_borders'] = args.get('col_borders')
-        arguments['align'] = args.get('align')
-        arguments['show_caption'] = args.get_bool('caption')
-        arguments['show_numbers'] = args.get_bool('numbers')
-        arguments['head'] = args.get_int('head')
-        arguments['foot'] = args.get_int('foot')
-
-    @classmethod
-    def parse2(cls, context, chunk):
-        captions = []
-        rowsets = [TableRowSet(context.src, 0, 0, children=[])]
-        for child in chunk.children:
-            if isinstance(child, TableCaption):
-                captions.append(child)
-            elif isinstance(child, TableRowSetBreak):
-                # If current rowset is empty, then discard it
-                if not rowsets[-1].children:
-                    del rowsets[-1]
-                rowsets.append(TableRowSet(context.src, child.start_pos, 0, children=[],
-                    row_borders=child.row_borders,
-                    col_borders=child.col_borders,
-                    align=child.align,
-                ))
-            elif isinstance(child, TableRowSet):
-                # If current rowset is empty, then discard it
-                if not rowsets[-1].children:
-                    del rowsets[-1]
-                rowsets.append(child)
-                # Start a new rowset
-                rowsets.append(TableRowSet(context.src, context.pos, 0, children=[]))
-            elif isinstance(child, TableRow):
-                rowsets[-1].children.append(child)
-        # If current rowset is empty, then discard it
-        if rowsets and not rowsets[-1].children:
-            del rowsets[-1]
-        # If all rowsets are empty, table is invalid
-        if sum(len(s.children) for s in rowsets) == 0:
-            raise NoMatch
-        # Concatenate captions if necessary
-        if len(captions) > 1:
-            children = []
-            for caption in captions:
-                children.extend(caption.children)
-            captions[-1].children = children
-        chunk.caption = None if not captions else captions[-1]
-        chunk.rowsets = rowsets
-        chunk.apply_spans()
-        chunk.apply_formats(TableFormats())
-        chunk.apply_structure()
-        return chunk
-    

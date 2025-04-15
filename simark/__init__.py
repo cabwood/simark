@@ -1,24 +1,23 @@
-from . import parse, render, core, basic, table
+from . import parse, render, core, basic, table, image
 from .parse import ParseContext
 from .render import RenderContext
-from .core import \
-    Document, DocumentParser
+from .core import Document
 from .basic import \
-    Text, TextParser, \
-    Paragraph, ParagraphParser, \
-    VerbatimParser, \
-    Format, FormatParser, \
-    LineBreak, LineBreakParser, \
-    Heading, HeadingParser, \
-    Section, SectionParser, \
-    List, ListParser, \
-    Link, LinkParser, \
-    GetVar, GetVarParser, \
-    SetVar, SetVarParser, \
-    IncVar, IncVarParser, \
-    Entity, EntityParser, \
-    Code, CodeParser, \
-    Align, AlignParser, \
-    Float, FloatParser
-from .table import Table, TableParser
-from .image import Image, ImageParser
+    Text, \
+    Paragraph, \
+    Verbatim, \
+    Format, \
+    Line, \
+    Heading, \
+    Section, \
+    List, \
+    Link, \
+    GetVar, \
+    SetVar, \
+    IncVar, \
+    Entity, \
+    Code, \
+    Align, \
+    Float
+from .table import Table
+from .image import Image

@@ -1,7 +1,7 @@
 import html
 from itertools import permutations
 from .parse import NoMatch, Many, Any, Regex
-from .core import ElementParser, Element, TextParser, Text, VerbatimParser
+from .core import Element, Text, Verbatim
 from .entities import plain_entities, html_entities
 
 
@@ -10,9 +10,20 @@ from .entities import plain_entities, html_entities
 
 class GetVar(Element):
 
+    names = ['get']
+    allow_children = False
+
     def __init__(self, src, start_pos, end_pos, children, name=None, arguments=None, var_name=None):
         super().__init__(src, start_pos, end_pos, children, name, arguments)
         self.var_name = var_name
+
+    @classmethod
+    def parse_arguments(cls, context, arguments):
+        args = cls.arguments_parser.parse(context)
+        var_name = args.get('var', 0)
+        if not var_name:
+            raise NoMatch
+        arguments['var_name'] = var_name
 
     def evaluate(self, context):
         return context.get_var(self.var_name)
@@ -29,11 +40,17 @@ class GetVar(Element):
         return f'<span{class_attr}>{html_out}</span>' if class_attr else html_out
 
 
-class GetVarParser(ElementParser):
+#=============================================================================
 
-    names = ['get']
-    allow_children = False
-    element_class = GetVar
+
+class SetVar(Element):
+
+    names = ['set']
+    child_parser = Many(Any(Text, GetVar))
+
+    def __init__(self, src, start_pos, end_pos, children=None, name=None, arguments=None, var_name=None):
+        super().__init__(src, start_pos, end_pos, children, name, arguments)
+        self.var_name = var_name
 
     @classmethod
     def parse_arguments(cls, context, arguments):
@@ -43,15 +60,9 @@ class GetVarParser(ElementParser):
             raise NoMatch
         arguments['var_name'] = var_name
 
-
-#=============================================================================
-
-
-class SetVar(Element):
-
-    def __init__(self, src, start_pos, end_pos, children=None, name=None, arguments=None, var_name=None):
-        super().__init__(src, start_pos, end_pos, children, name, arguments)
-        self.var_name = var_name
+    @classmethod
+    def parse_children(cls, context, arguments):
+        return cls.child_parser.parse(context).children
 
     def setup_enter(self, context):
         # Content should be only Text or GetVar. Value is concatenation of
@@ -68,16 +79,17 @@ class SetVar(Element):
         return ''
 
 
-class SetVarParser(ElementParser):
+#=============================================================================
 
-    names = ['set']
-    element_class = SetVar
-    child_parser = Many(
-        Any(
-            TextParser(),
-            GetVarParser(),
-        )
-    )
+
+class IncVar(Element):
+
+    names = ['inc']
+    allow_children = False
+
+    def __init__(self, src, start_pos, end_pos, children, name=None, arguments=None, var_name=None):
+        super().__init__(src, start_pos, end_pos, children, name, arguments)
+        self.var_name = var_name
 
     @classmethod
     def parse_arguments(cls, context, arguments):
@@ -86,20 +98,6 @@ class SetVarParser(ElementParser):
         if not var_name:
             raise NoMatch
         arguments['var_name'] = var_name
-
-    @classmethod
-    def parse_children(cls, context, arguments):
-        return cls.child_parser.parse(context).children
-
-
-#=============================================================================
-
-
-class IncVar(Element):
-
-    def __init__(self, src, start_pos, end_pos, children, name=None, arguments=None, var_name=None):
-        super().__init__(src, start_pos, end_pos, children, name, arguments)
-        self.var_name = var_name
 
     def setup_enter(self, context):
         context.inc_var(self.var_name)
@@ -108,37 +106,18 @@ class IncVar(Element):
         return ''
 
 
-class IncVarParser(ElementParser):
-
-    names = ['inc']
-    element_class = IncVar
-    allow_children = False
-
-    @classmethod
-    def parse_arguments(cls, context, arguments):
-        args = cls.arguments_parser.parse(context)
-        var_name = args.get('var', 0)
-        if not var_name:
-            raise NoMatch
-        arguments['var_name'] = var_name
-
-
 #=============================================================================
 
 
 class Paragraph(Element):
+
+    names = ['p']
 
     def render_self(self, context):
         html_out = self.render_children(context)
         class_attr = self.get_class_attr(context)
         indent, newline = self.get_whitespace(context)
         return f'{indent}<p{class_attr}>{html_out}</p>{newline}'
-
-
-class ParagraphParser(ElementParser):
-
-    names = ['p']
-    element_class = Paragraph
 
 
 #=============================================================================
@@ -154,6 +133,8 @@ def permutate(items):
 
 class Format(Element):
 
+    names = permutate('ibu')
+
     def render_self(self, context):
         html_out = self.render_children(context)
         for c in self.name:
@@ -162,20 +143,21 @@ class Format(Element):
         return f'<span{class_attr}>{html_out}</span>' if class_attr else html_out
 
 
-class FormatParser(ElementParser):
-
-    names = permutate('ibu')
-    element_class = Format
-
-
 #=============================================================================
 
 
 class Section(Element):
 
+    names = ['section', 's']
+
     def __init__(self, src, start_pos, end_pos, children, name=None, arguments=None, start_num=None):
         super().__init__(src, start_pos, end_pos, children, name, arguments)
         self.start_num = start_num
+
+    @classmethod
+    def parse_arguments(cls, context, arguments):
+        args = cls.arguments_parser.parse(context)
+        arguments['start_num'] = args.get_int('start')
 
     def setup_enter(self, context):
         context.section_counter.enter(start_num=self.start_num)
@@ -190,27 +172,23 @@ class Section(Element):
         return f'{indent}<section{class_attr}>{newline}{html_out}{newline}{indent}</section>{newline}'
 
 
-class SectionParser(ElementParser):
-
-    names = ['section', 's']
-    element_class = Section
-
-    @classmethod
-    def parse_arguments(cls, context, arguments):
-        args = cls.arguments_parser.parse(context)
-        arguments['start_num'] = args.get_int('start')
-
-
-
 #=============================================================================
 
 
 class Heading(Element):
 
+    names = ['h']
+
     def __init__(self, src, start_pos, end_pos, children, name=None, arguments=None, level=None, show_numbers=None):
         super().__init__(src, start_pos, end_pos, children, name, arguments)
         self.level = level
         self.show_numbers = show_numbers
+
+    @classmethod
+    def parse_arguments(cls, context, arguments):
+        args = cls.arguments_parser.parse(context)
+        arguments['level'] = args.get_int('level', 0)
+        arguments['show_numbers'] = args.get_bool('numbers', default=True)
 
     def setup_enter(self, context):
         if self.level is None:
@@ -237,22 +215,12 @@ class Heading(Element):
         return f'{indent}<h{level}{class_attr}>{html_out}</h{level}>{newline}'
 
 
-class HeadingParser(ElementParser):
-
-    names = ['h']
-    element_class = Heading
-
-    @classmethod
-    def parse_arguments(cls, context, arguments):
-        args = cls.arguments_parser.parse(context)
-        arguments['level'] = args.get_int('level', 0)
-        arguments['show_numbers'] = args.get_bool('numbers', default=True)
-
-
 #=============================================================================
 
 
 class ListItem(Element):
+
+    names = ['item']
 
     def setup_enter(self, context):
         self.numbers = context.list_counter.text
@@ -265,12 +233,6 @@ class ListItem(Element):
         html_out = self.render_children(context)
         indent, newline = self.get_whitespace(context)
         return f'{indent}<li{class_attr}>{html_out}</li>{newline}'
-
-
-class ListItemParser(ElementParser):
-
-    names = ['item']
-    element_class = ListItem
 
 
 #=============================================================================
@@ -288,10 +250,29 @@ list_styles = {
 
 class List(Element):
 
+    names = ['list']
+    child_parser = Many(
+        Any(
+            ListItem,
+            Regex(r'\s*'),
+        )
+    )
+
     def __init__(self, src, start_pos, end_pos, children, name=None, arguments=None, style=None, start_num=None):
         super().__init__(src, start_pos, end_pos, children, name, arguments)
         self.style = style if style in list_styles else '.'
         self.start_num = start_num
+
+    @classmethod
+    def parse_arguments(cls, context, arguments):
+        args = cls.arguments_parser.parse(context)
+        arguments['style'] = args.get('style')
+        arguments['start_num'] = args.get_int('start', pos=None, default=1, invalid=1)
+
+    @classmethod
+    def parse_children(cls, context, arguments):
+        children = cls.child_parser.parse(context).children
+        return [child for child in children if isinstance(child, ListItem)]
 
     def setup_enter(self, context):
         context.list_counter.enter(self.style, start_num=self.start_num)
@@ -309,48 +290,16 @@ class List(Element):
         return f'{indent}<{tag}{class_attr}{style_attr}{start_attr}>{newline}{html_out}{newline}{indent}</{tag}>{newline}'
 
 
-class ListParser(ElementParser):
-
-    names = ['list']
-    element_class = List
-    child_parser = Many(
-        Any(
-            ListItemParser(),
-            Regex(r'\s*'),
-        )
-    )
-
-    @classmethod
-    def parse_arguments(cls, context, arguments):
-        args = cls.arguments_parser.parse(context)
-        arguments['style'] = args.get('style')
-        arguments['start_num'] = args.get_int('start', pos=None, default=1, invalid=1)
-
-    @classmethod
-    def parse_children(cls, context, arguments):
-        children = cls.child_parser.parse(context).children
-        return [child for child in children if isinstance(child, ListItem)]
-
-
 #=============================================================================
 
 
 class Link(Element):
 
+    names = ['link']
+
     def __init__(self, src, start_pos, end_pos, children, name=None, arguments=None, url=None):
         super().__init__(src, start_pos, end_pos, children, name, arguments)
         self.url = url
-
-    def render_self(self, context):
-        html_out = self.render_children(context) or html.escape(self.url)
-        class_attr = self.get_class_attr(context)
-        return f'<a{class_attr} href="{self.url}">{html_out}</a>'
-
-
-class LinkParser(ElementParser):
-
-    names = ['link']
-    element_class = Link
 
     @classmethod
     def parse_arguments(cls, context, arguments):
@@ -360,20 +309,21 @@ class LinkParser(ElementParser):
             raise NoMatch
         arguments['url'] = url
 
+    def render_self(self, context):
+        html_out = self.render_children(context) or html.escape(self.url)
+        class_attr = self.get_class_attr(context)
+        return f'<a{class_attr} href="{self.url}">{html_out}</a>'
+
 
 #=============================================================================
 
 
-class LineBreak(Element):
-
-    def render_self(self, context):
-        return f'<br>'
-
-
-class LineBreakParser(ElementParser):
+class Line(Element):
 
     names = ['l']
-    element_class = LineBreak
+
+    def render_self(self, context):
+        return self.render_children(context) + f'<br>'
 
 
 #=============================================================================
@@ -381,15 +331,11 @@ class LineBreakParser(ElementParser):
 
 class Entity(Element):
 
-    def render_self(self, context):
-        return html_entities[self.name[1:]]
-
-
-class EntityParser(ElementParser):
-
     names = [f'_{s}' for s in plain_entities.keys()]
     name_case_sensitive = True
-    element_class = Entity
+
+    def render_self(self, context):
+        return html_entities[self.name[1:]]
 
 
 #=============================================================================
@@ -397,23 +343,14 @@ class EntityParser(ElementParser):
 
 class Code(Element):
 
-    def render_self(self, context):
-        class_attr = self.get_class_attr(context)
-        html_out = self.render_children(context)
-        indent, newline = self.get_whitespace(context)
-        return f'{indent}<pre{class_attr}>{html_out}</pre>{newline}'
-
-
-class CodeParser(ElementParser):
-
     names = ['code']
-    element_class = Code
-    parser = Many(
-                Any(
-                    VerbatimParser(),
-                    TextParser(),
-                )
+    parser = \
+        Many(
+            Any(
+                Verbatim,
+                Text,
             )
+        )
 
     @classmethod
     def parse_children(cls, context, arguments):
@@ -437,6 +374,12 @@ class CodeParser(ElementParser):
             return [Text(context.src, start_pos, end_pos, '\n'.join(lines))]
         return children
 
+    def render_self(self, context):
+        class_attr = self.get_class_attr(context)
+        html_out = self.render_children(context)
+        indent, newline = self.get_whitespace(context)
+        return f'{indent}<pre{class_attr}>{html_out}</pre>{newline}'
+
 
 #=============================================================================
 
@@ -451,23 +394,12 @@ float_styles = {
 
 class Float(Element):
 
+    names = ['float']
+
     def __init__(self, src, start_pos, end_pos, children, name=None, arguments=None, align=None, clear=None):
         super().__init__(src, start_pos, end_pos, children, name, arguments)
         self.align = align
         self.clear = clear
-
-    def render_self(self, context):
-        content_html = self.render_children(context)
-        float_style = float_styles[self.align]
-        clear_style = ' clear: both;' if self.clear else ''
-        indent, newline = self.get_whitespace(context)
-        return f'{indent}<div style="{float_style}{clear_style}">{newline}{content_html}{newline}{indent}</div>{newline}'
-
-
-class FloatParser(ElementParser):
-
-    names = ['float']
-    element_class = Float
 
     @classmethod
     def parse_arguments(cls, context, arguments):
@@ -477,6 +409,13 @@ class FloatParser(ElementParser):
             raise NoMatch
         arguments['align'] = align
         arguments['clear'] = arguments.get_bool('clear')
+
+    def render_self(self, context):
+        content_html = self.render_children(context)
+        float_style = float_styles[self.align]
+        clear_style = ' clear: both;' if self.clear else ''
+        indent, newline = self.get_whitespace(context)
+        return f'{indent}<div style="{float_style}{clear_style}">{newline}{content_html}{newline}{indent}</div>{newline}'
 
 
 #=============================================================================
@@ -497,22 +436,11 @@ align_styles = {
 
 class Align(Element):
 
+    names = ['align']
+
     def __init__(self, src, start_pos, end_pos, children, name=None, arguments=None, align=None):
         super().__init__(src, start_pos, end_pos, children, name, arguments)
         self.align = align
-
-    def render_self(self, context):
-        class_attr = self.get_class_attr(context)
-        style_attr = f' style="{align_styles[self.align]}"' if self.align else ''
-        html_out = self.render_children(context)
-        indent, newline = self.get_whitespace(context)
-        return f'{indent}<div{class_attr}{style_attr}>{newline}{html_out}{newline}{indent}</div>{newline}'
-
-
-class AlignParser(ElementParser):
-
-    names = ['block']
-    element_class = Align
 
     @classmethod
     def parse_arguments(cls, context, arguments):
@@ -521,5 +449,12 @@ class AlignParser(ElementParser):
         if not align in align_styles:
             raise NoMatch
         arguments['align'] = align
+
+    def render_self(self, context):
+        class_attr = self.get_class_attr(context)
+        style_attr = f' style="{align_styles[self.align]}"' if self.align else ''
+        html_out = self.render_children(context)
+        indent, newline = self.get_whitespace(context)
+        return f'{indent}<div{class_attr}{style_attr}>{newline}{html_out}{newline}{indent}</div>{newline}'
 
 

@@ -107,7 +107,7 @@ class SectionCounter(Stack):
         super().__init__('section', level=0, child_number=1)
 
     def get_separator(self):
-        return self.context.get_stack('main').get('section_separator') or self.default_separator
+        return self.context.get_state('main', 'section_separator', self.default_separator)
 
     @property
     def level(self):
@@ -132,7 +132,7 @@ class SectionCounter(Stack):
     @property
     def numbers(self):
         # Top level has no number, so don't include it
-        return [item['number'] for item in self.items[1:]]
+        return [item['number'] for item in self.frames[1:]]
 
     def enter(self, start_num=None):
         if start_num is None:
@@ -208,13 +208,13 @@ class CompoundCounter:
 class TableCounter(CompoundCounter):
 
     def get_separator(self):
-        return self.context.get_stack('main').get('table_separator') or self.default_separator
+        return self.context.get_state('main', 'table_separator', self.default_separator)
 
 
 class FigureCounter(CompoundCounter):
 
     def get_separator(self):
-        return self.context.get_stack('main').get('figure_separator') or self.default_separator
+        return self.context.get_state('main', 'figure_separator', self.default_separator)
 
 
 class ListCounter(Stack):
@@ -226,7 +226,7 @@ class ListCounter(Stack):
         super().__init__('list', level=0)
 
     def get_separator(self):
-        return self.context.get_stack('main').get('list_separator') or self.default_separator
+        return self.context.get_state('main', 'list_separator', self.default_separator)
 
     @property
     def level(self):
@@ -248,7 +248,7 @@ class ListCounter(Stack):
     @property
     def numbers(self):
         # Top level has no number, so don't include it
-        return [item['number'] for item in self.items[1:]]
+        return [item['number'] for item in self.frames[1:]]
 
     @property
     def style(self):
@@ -257,7 +257,7 @@ class ListCounter(Stack):
     @property
     def styles(self):
         # Top level has no style, so don't include it
-        return [item['style'] for item in self.items[1:]]
+        return [item['style'] for item in self.frames[1:]]
 
     def enter(self, style, start_num=None):
         if start_num is None:
@@ -365,7 +365,7 @@ class RenderMixin:
         return indent, newline
 
     def get_class_attr(self, context, *classes):
-        prefix = context.get_stack('main').get('html_class_prefix', '')
+        prefix = context.get_state('main', 'html_class_prefix', '')
         if classes:
             return f' class="{" ".join([f"{prefix}{c}" for c in classes])}"'
         if self.html_class:
