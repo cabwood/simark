@@ -304,7 +304,7 @@ class Text(Entity):
     def __repr__(self):
         return f"{self.__class__.__name__}({self.text!r})"
 
-    regex = re.compile(r"[^~\\`\{\}\[\]\|\n]+")
+    regex = re.compile(r"[^~\\`\^\{\}\[\]\|\n]+")
 
     @staticmethod
     def read(context: Context):
@@ -319,7 +319,7 @@ class Text(Entity):
 
 class Escape(Text):
 
-    regex = re.compile(r"\\([\\\[\]{}|`])")
+    regex = re.compile(r"\\([\\\[\]{}|`\^])")
 
     @staticmethod
     def read(context: Context):
@@ -775,6 +775,37 @@ class Call(Entity):
         return self.result
 
 
+class Annotation(Entity):
+
+    def __init__(self, name: str, value: Entity):
+        self.name = name
+        self.value = value
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}({self.name}={self.value!r})"
+
+    equal_regex = re.compile(r"[^\S\n]*=[^\S\n]*")
+    value_regex = re.compile(r"[^~\\`\^\{\}\[\]\|\s]+")
+
+    @staticmethod
+    @rollback_no_match
+    def read(context: Context):
+        if not match_literal(context, '^'):
+            return None
+        name = read_identifier(context)
+        if name is None:
+            return None
+        if not match_regex(context, Annotation.equal_regex):
+            return Annotation(name, Null())
+        verbatim = Verbatim.read(context)
+        if verbatim:
+            return Annotation(name, Text(verbatim.text))
+        text_match = match_regex(context, Annotation.value_regex)
+        if text_match:
+            return Annotation(name, Text(str(text_match)))
+        return Annotation(name, Text(""))
+        
+
 class Unit(Entity):
 
     term_regex = re.compile(r"\||\n")
@@ -804,6 +835,7 @@ class Unit(Entity):
         Nest.read,
         GlobalBindings.read,
         LocalBindings.read,
+        Annotation.read,
         read_other,
     ]
 
@@ -844,25 +876,16 @@ class PhraseMacro(Entity):
         
 
 def test1():
+    from table import Cell
 
-    src = """
-[[
-    b[content=~phrase] = <b>~content</b>
-    i[content=~phrase] = <i>~content</i>
-    bi = ~b[content=~i[content=~content]]
-    ib = ~bi
-]]
-
-\\bi hello
-\\i goodbye
-"""
+    src = """^rowspan=2^irrelevant=hello^colspan=1 cell 1 | cell 2 | cell 3"""
 
     builtins = {
         "phrase": (PhraseMacro(), None),
     }
 
     ctx = Context(src, builtins)
-    doc = Document.read(ctx)
+    doc = Cell.read(ctx)
     if doc is None:
         print("No match")
     else:

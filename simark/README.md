@@ -72,3 +72,41 @@ By defining a macro with a default parameter `content=~phrase`, which can be ove
 `[[ h[content=~phrase] = <h1>~content</h1>]]`
 
 Here `phrase` is a macro that reads a single phrase from the current input position.
+
+## 6. Annotations (`^...`)
+
+Annotations provide a mechanism to attach simple metadata (key-value pairs or flags) directly to the document structure at parse time. They act like non-rendering "stickers" or labels associated with the content they appear alongside.
+
+* **Purpose:** To provide metadata for interpretation by specific macros (e.g., `\table` interpreting `^colspan=2`) or other tools (e.g., a cross-referencing system using `^id=...`), without affecting the standard evaluation or namespace context. Annotations themselves do not trigger actions or evaluations.
+* **Parsing:** Annotations are recognized by the parser as standard `Unit` elements.
+* **Scope:** Annotations apply locally to the structure they are directly parsed within (e.g., a `Phrase`). Annotations nested inside other structures (like `Nest` (`{...}`) or macro `Call` (`\`) results) do not apply to the containing structure.
+* **Interpretation:** Annotations are typically ignored unless a specific macro or process is designed to look for and interpret certain annotation names.
+
+### Syntax
+
+Annotations start with a caret (`^`) followed immediately by an identifier (the annotation name). There are two forms:
+
+1.  **Flag Annotation:**
+    * Syntax: `^flag_name`
+    * Semantics: Indicates the presence of a boolean flag. The implicit value associated with the annotation is `Null`. Macros or tools typically check for the *existence* of the annotation name.
+    * Example: `^readonly`
+
+2.  **Key-Value Annotation:**
+    * Syntax: `^key=value`
+    * Semantics: Associates a textual value with a key (the annotation name).
+    * Value Parsing:
+        * **Simple Value:** If the text immediately following `=` consists only of non-whitespace, non-special characters (`\`, `~`, `{`, `[`, `]`, `|`, ``` ` ```, `^`), it is parsed directly as the value. Parsing stops at the first whitespace or special character.
+            * Example: `^id=section-1`, `^count=3`
+        * **Verbatim Value:** If the text immediately following `=` starts with one or more backticks (`` ` ``), the value is parsed using verbatim rules. It includes all characters until a matching closing sequence of backticks is found. This allows values containing whitespace or special characters.
+            * Example: ``^title=`My Section | Part 1` `` , ``^css=`border: solid 1px black;` ``
+        * **Empty Value:** An equals sign followed immediately by whitespace, a special character, or end-of-input results in an empty text value (`""`). Example: `^class=`
+    * Internal Representation: The parsed value is represented internally as a `Text` entity.
+
+### Examples
+
+```retex
+Some text ^draft ^id=chap1 with annotations.
+
+\table
+Header 1 | Header 2 | Header 3
+^row_bg=grey Data A | ^colspan=2 ``Cell B & C``
