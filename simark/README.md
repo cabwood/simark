@@ -1,381 +1,74 @@
 # Retex
 
-**Retex** is a macro-driven, literal-first language for structured writing.
-
-Inspired by the power of TeX and LaTeX — but designed for authors, not programmers — Retex inverts the traditional paradigm. In Retex, **text is the default**. Logic, macros, and structure appear only where needed, and always in service of the writing.
-
-There are no escape characters — only macros.  
-There are no types — only values.  
-There is no syntax magic — only clarity, composition, and control.
-
-> **Retex** revisits TeX not to rebuild it — but to rediscover what authorship can be when we start with the text.
-
----
-
-## ✨ Key Principles
-
-- **Literal-first**: Unquoted text is the default. Structure and logic are opt-in.
-- **Macro-native**: All behavior is extensible via first-class macros.
-- **Unified object model**: Everything is a value — callable, inspectable, composable.
-- **Explicit evaluation**: `\x` invokes an object. Nothing is evaluated unless you say so.
-- **Stack-based scoping**: Blocks push context. Values inherit, shadow, and compose.
-- **Structured blocks**: `[key = value | ...]` defines objects; `{...}` defines structure.
-- **No syntax tricks**: Even `\{` is just a macro returning `{`.
-
----
-
-## 💡 Why Retex?
-
-Most tools — TeX, LaTeX, Markdown, even modern programming languages — treat text as a second-class citizen: something to escape, quote, or inject into logic.
-
-**Retex flips the script.**  
-It’s not code with embedded text — it’s **text with embedded logic**.  
-It’s for humans who write, not programs that render.
-
----
-
-## 📦 Examples
-
-```retex
-[title = Welcome | author = Simon]
-
-\section[title = \title] {
-  This is Retex.
-
-  It's not escaped — it's expressed.
-}
-
-
-# 📘 Phases and Analogies in the Retex Language
-
----
-
-## 🚦 Overview of the Phases
-
-Retex processes documents in clearly separated phases. Each phase has distinct responsibilities, inputs, and outputs:
-
-| Phase     | Retex Term     | Synonyms / Analogies                | Purpose                                   |
-|-----------|----------------|-------------------------------------|-------------------------------------------|
-| Phase 1   | Bootstrapping  | Compile-time, Macro Expansion       | Parse source into structured entities     |
-| Phase 2   | Evaluation     | Runtime, Expansion, Interpretation  | Evaluate entity tree to generate output   |
-| Phase 3   | Rendering      | Backend, Codegen                    | Convert structured output to final format |
-
----
-
-## 🧱 Phase 1: Bootstrapping ("Compile-Time")
-
-- **Purpose**: Parse source text using macros to build a structured `Entity` tree.
-- **Reads**: `ctx.src`, `ctx.pos`, and `ctx.stack` (for fields, slots, and temporary variables).
-- **Returns**: Fully structured, evaluatable objects — the document's semantic structure.
-- **Analogy**: Similar to AST construction or macro expansion in a compiler.
-
-> ✅ Entities surviving phase 1 are *self-contained* and do not access the source anymore.
-
----
-
-## 🔁 Phase 2: Evaluation ("Runtime")
-
-- **Purpose**: Walk the `Entity` tree and render or transform content.
-- **Reads**: `ctx.stack` only — not `ctx.src`.
-- **Mutates**: Stack for things like counters, nesting levels, and environment variables.
-- **Returns**: Strings or a structured intermediate representation (e.g. JSON).
-
-> ✅ The phase-2 context stack is fresh — it may be newly initialized with runtime-only variables.
-
----
-
-## 📦 Phase 2 Output: Structured Intermediate ("p-code")
-
-If Retex chooses to emit **JSON** or **XML** rather than direct HTML, the phase 2 output becomes a neutral, platform-independent format. This is conceptually equivalent to:
-
-- **p-code** in compiled languages
-- **IR (intermediate representation)** in modern compilers
-
-This enables:
-- Language-agnostic rendering engines
-- Transformations and export pipelines
-- Static analysis and tooling
-
----
-
-## 🖨️ Phase 3: Rendering ("Codegen")
-
-- **Purpose**: Convert the structured output from phase 2 (e.g. JSON) into a specific target format like HTML, PDF, etc.
-- **Examples**:
-  - Browser-side JavaScript rendering
-  - Static site generation
-  - PDF pipelines (e.g. via LaTeX or custom tools)
-
-> 🔧 This phase can be implemented in **any language**, consuming the serialized tree from Phase 2.
-
----
-
-## 💡 Design Takeaways
-
-- Phase 2 entities must capture *all* available configuration during Phase 1.
-- Phase 2 runs in a clean context — no need to retain phase-1 stack frames.
-- This model makes the system:
-  - Easier to test
-  - Easy to serialize and cache
-  - Extensible to new output formats
-
----
-
-## 🧩 Entity Lifecycle by Phase
-
-| Entity Type   | Phase | __call__() Returns | Uses `ctx.src`? | Uses `ctx.stack`? | Purpose                          |
-|---------------|-------|---------------------|------------------|-------------------|----------------------------------|
-| Parser Macro  | 1     | Phase 2 Entity      | ✅ Yes           | ✅ Yes            | Build structured entities        |
-| Renderable    | 2     | string / JSON node  | ❌ No            | ✅ Yes            | Render or emit structure         |
-| Backend Node  | 3     | HTML / PDF / etc.   | ❌ No            | ❌ Optional       | Format-specific output conversion |
-
----
-
-# 🧭 Retex Language: Project Summary
-
-## ✅ Core Architectural Decisions
-
-### Phases
-
-1. Phase 1 (Compilation)  
-   Parses source text into Entity trees, consuming ctx.src.  
-   Source is no longer needed after this phase.
-
-2. Phase 2 (Evaluation)  
-   Walks the tree using a clean ctx.stack, interpreting macros and producing structured output (e.g. JSON).
-
-3. Phase 3 (Rendering) *(optional)*  
-   Converts structured output (e.g. JSON) into HTML, PDF, etc.
-
-### Stack Behavior
-
-- Phase 2 uses a new context stack (not reused from parsing).
-- Macros read dynamic values (like counters) from the stack.
-- Entities capture all static config during Phase 1.
-
-### Entity Behavior
-
-- All objects are Entity instances.
-- Entities must implement __call__ to support dynamic evaluation.
-- Context lookups and scoping follow Python-like inheritance.
-
----
-
-## 🧠 Language Design Highlights
-
-### Textual Structure
-
-- Sentence: ends with `|`
-- Line: ends with `\n`
-- Paragraph: ends with a blank line
-
-### Context Model
-
-- Context = stack of frames.
-- Lookup searches upward through the stack.
-- Each macro call pushes a frame; exiting pops it.
-- Bindings (`[...]`) mutate the current frame.
-- Variables are first-class objects: referenced via @name, invoked via \name.
-
-### Evaluation Rules
-
-- Everything is an object. Evaluation occurs only when explicitly invoked via \.
-- @name references an object; \name calls it.
-- `[...]` is a binding, immediately evaluated (unless wrapped).
-
----
-
-## 🔁 Macro System
-
-### Macro Definition
-
-- Use @{...} to define anonymous macros.
-- Assign with [my_macro = @{...}] to create named macros.
-- Macros may include bindings, lookaheads, nested calls, and closures.
-
-### Macro Invocation
-
-- `[...] \macro` is the standard form (binding first).
-- `\macro[...]` is allowed only if the macro is explicitly written to extract the following binding. This is opt-in, not default.
-
-### Lookaheads
-
-- Lookaheads inside `[...]` can extract source content that follows the binding.
-- Evaluated only after the closing `]`.
-- Results are injected into context prior to macro execution.
-
----
-
-## 🔧 Implementation Notes
-
-### Bindings
-
-- parse_binding returns a Binding object.
-- When ctx.flow = True, Binding is executed immediately and updates the current context.
-- When wrapped (e.g. @[...]), the binding is deferred.
-
-### Flow Control
-
-- ctx.flow indicates whether to evaluate during parse or defer.
-- Top-level context starts with flow = True.
-- Macros and @{...} bodies run with flow = True.
-- Inside deferred blocks, flow = False.
-
----
-
-## 🔒 Locked Language Rules
-
-1. Bindings must precede the macro that uses them.  
-   The standard form is: [key=value] \macro
-
-2. Macros may opt in to trailing binding support.  
-   This enables the familiar form: \macro[key=value]  
-   Internally, the macro is responsible for detecting and applying the trailing binding.  
-   This is not general syntax — only macros that explicitly support this will behave this way.
-
----
-
-## 🧪 Macro Usage Examples
-
-### Header
-
-\h Chapter 1 – The Beginning
-
-- \h consumes the following sentence.
-
-### Table
-
-\table[caption=Expenses 2025]  
-item | amount  
-rent | 1000
-
-- \table is defined to optionally extract and apply trailing binding before consuming rows.
-
-### Named Macro with Lookahead Binding
-
-[greet = @{[name = \get_sentence] hello \name}]  
-\greet George | Rachel
-
-- The macro extracts the next sentence and formats it.
-
----
-
-## 🔍 Future-Safe Design Notes
-
-- @[...], @{...}, and @[ ... ] are distinct, with well-defined behavior.
-- Possible future additions:
-  - @( ... ) for grouped expressions
-  - @regex[...] for pattern objects
-- Macros can be composed, closed over, and invoked with captured or current context — like closures.
-
-This summary incorporates decisions made up to this point, building upon the state at the end of Discussion 2.
-
-1. Core Philosophy:
-
-Everything is an Entity/Macro: All constructs (static values like text/numbers, parameters, defined macros, nests, lists, errors) are represented uniformly as Entity objects in the context scope.
-
-Unified Evaluation: Evaluation consistently occurs by looking up an Entity by name in the context and invoking its call(context) method. The complexity lies in the implementation of call() for different entity types.
-
-2. Execution Model (\ vs. ~):
-
-\ (Backslash) = Immediate Execution:
-
-When encountered anywhere, \ triggers an immediate lookup of the following name in the context and calls the found entity's call() method.
-
-The result (an Entity) replaces the \name invocation in the AST being built (if parsing a definition/default) or the output stream (if executing top-level/body).
-
-Exception: When \parameterName is encountered during definition parsing (RHS or default value), the lookup finds a temporary ParameterPlaceholder entity whose call() method returns a Ref("parameterName") entity, effectively deferring the parameter substitution.
-
-Read-ahead defaults (?{...}) within an immediately executed macro (\macro) operate based on the current execution context (main input stream or definition source). Using read-aheads with \ inside definitions is dangerous.
-
-~ (Tilde) = Deferred Execution / Reference:
-
-When encountered anywhere, ~name creates a Ref("name") entity (formerly called MacroRef) representing a deferred lookup-and-call. This Ref entity is placed in the AST.
-
-Arguments provided (~macro<args...>) are parsed at definition time and stored within the Ref node (immediate \ calls within args are evaluated; \param references become nested Ref nodes).
-
-The Ref.call() method performs the deferred lookup, resolves stored arguments (evaluating nested Refs), and calls the target entity's call() method.
-
-Use Cases: Explicit deferral, creating closures/partial applications, safe use of read-ahead macros in default values (~word).
-
-Parser/Executor Interaction: Immediate execution (\) during parsing requires tight coupling between parser and executor.
-
-3. Syntax:
-
-Parameter Lists (Definition): [[ name [...] = ... ]]
-
-Uses square brackets [...].
-
-Parameters separated by | (with optional surrounding ws).
-
-Allowed types (reflecting named-only args in calls):
-
-paramName (Named)
-
-paramName ? { default_expression } (Named w/ Default)
-
-*collectorName (e.g., *options, *kwargs, *bin)
-
-Default expressions require {...} delimiters for unambiguous parsing.
-
-Argument Lists (Call): \macro<...>  (Tentative decision)
-
-Uses angle brackets <...> to distinguish from parameter lists. Requires escaping (\<) if literal < immediately follows \macroName ws?.
-
-Arguments inside are named-only (name=value).
-
-Arguments separated by | (with optional surrounding ws).
-
-Order is irrelevant.
-
-List Values (in Arguments/Defaults): {item1 | item2 | ...}
-
-Uses curly braces {...}. Items separated by |.
-
-Represents grouped content intended as a list.
-
-Nest Blocks: {...} used in content for grouping/scope.
-
-Verbatim: ...`` 
-
-4. Parsing Strategy:
-
-Hierarchy: Document parsed as implicit outer Nest. Content follows Nest -> Block(s) -> Line(s) -> Phrase(s) -> ExpressionUnit(s) hierarchy.
-
-Whitespace:
-
-Child parsers handle their own leading whitespace (parse_ws/parse_ws_nl at start).
-
-Parent sequence parsers handle whitespace around separators (e.g., \s*\|\s*).
-
-\nbsp parser is special: consumes surrounding whitespace (\s*\\nbsp\s*).
-
-Whitespace collapsing (multiple spaces/tabs to one space) happens during text processing/rendering (or potentially within parse_plain), not by discarding all inter-element whitespace during structural parsing. (Introduced Whitespace nodes previously, then discussed parse_plain internal collapse - final mechanism for rendering TBD).
-
-Separators: Parent parsers handle separators (item ( separator item )* logic). Works for zero-or-more.
-
-Rollback: Use @rollback_on_nomatch decorator (standalone or static method @Context.rollback_on_nomatch). Ensures atomicity by restoring context.pos (and context.expected stack). If using accumulator model (which we decided against), decorator needs to handle accumulator state rollback too.
-
-Structure: Standalone functions (parse_X(context, ...)) recommended for structural parsers. Low-level helpers (seek, eof, read_literal) remain methods of Context.
-
-Naming: parse_X or read_X convention preferred.
-
-5. Error Handling:
-
-Model: Recoverable errors. Parsers return Entity on success or Error (inheriting from Group) on recoverable failure. Error contains message, pos, severity, and children (skipped/partial entities).
-
-NoMatch: Used for clean non-matches (triggering alternatives/backtracking). Rollback ensures atomicity. Warnings generated during a NoMatch path are discarded by rollback (alternative: attach to exception).
-
-Context Logging (@collect_errors - Discussed but Rejected): We explored but moved away from the model where parsers log errors to context.errors and a wrapper processes them, in favour of the direct Entity | Error return.
-
-6. List Interpretation:
-
-{...} used as a list value is parsed consistently (Block/Line/Phrase).
-
-Macros receiving a Nest object interpret it based on expectation (list of Phrases, Lines, or Blocks).
-
-Simple automatic collapse (single-child promotion) occurs after parsing to tidy the tree.
-
-An explicit \list macro (formerly \collapse) is available to apply collapse rules and guarantee an enumerable list output. (User preferred implicit handling by receiver, but \list utility still seems useful).
-
-7. Transcrypt Compatibility: Key features discussed (decorators, static methods, local classes, cache, exceptions, if s:) are expected to be compatible.
+## 1. Core Philosophy
+
+* **Author-First Design:** Retex is designed primarily for authors, not programmers. The core goal is clarity, predictability, and ease of use. Complexity should, where possible, be handled by the implementation rather than burdening the author with special rules or non-intuitive behavior. "Just write, it will do what you think it will" is a guiding principle.
+* **Literal-First:** Text is the default mode[cite: 262]. Structure, logic, and macros are introduced explicitly via specific syntax.
+* **Macro-Native:** Functionality and extensibility are achieved through macros defined and invoked within Retex[cite: 267].
+* **Clarity and Control:** Syntax aims for unambiguity[cite: 264]. Evaluation requires explicit invocation (`\`) or reference (`~`), avoiding hidden "magic"[cite: 264, 268].
+* **Retex** revisits TeX not to rebuild it — but to rediscover what authorship can be when we start text-first. Inspired by the power of TeX and LaTeX — but designed for authors, not programmers — Retex inverts the traditional paradigm. In Retex, **text is the default**. Logic, macros, and structure appear only where needed, and always in service of the writing. Most tools — TeX, LaTeX, Markdown, even modern programming languages — treat text as a second-class citizen: something to escape, quote, or inject into logic. **Retex flips the script.**, it’s not code with embedded text — it’s **text with embedded logic**. It’s for humans who write, not programs that render.
+
+## 2. Core Concepts
+
+* **Unified Object Model:** Everything represented internally (text, numbers, parameters, defined macros, references, structural groups) is conceptually an `Entity` object[cite: 267, 314].
+* **Callability:** All `Entity` objects are callable via the `\` invocation syntax[cite: 315], executing their specific behavior within the current context (e.g., a `Text` entity returns itself[cite: 117], a macro entity executes its body).
+* **Evaluation Model:**
+    * **`\` (Call):** Triggers *immediate* lookup of `name` and execution of the found entity's `.call()` method[cite: 171, 182]. Call-time arguments (`[A...]`) override definition-time defaults (`[D...]`).
+    * **`~` (Reference):** Creates a `Ref(name, args)` object at parse time, representing a *deferred lookup-and-call* (late binding)[cite: 152, 172]. The lookup and execution occur only when the `Ref` object itself is later executed (via `\`).
+    * **Immediate RHS Evaluation:** When a binding (`[...]` or `[[...]]`) like `name[D...]=V` is encountered, the RHS expression `V` is evaluated *immediately* at parse time (with the exception of `~` references within it)[cite: 64, 65]. The result of this evaluation is the `Entity` object that gets bound to `name`. This ensures definitions are available for subsequent parsing steps (e.g., for macros involving read-aheads).
+* **Scoping Model:**
+    * **Local Scope:** Managed by a stack of dictionaries (`Context.local_bindings`)[cite: 1]. Frame 0 is the root local frame. `[...]` modifies the top frame (`[-1]`)[cite: 7].
+    * **Global Scope:** Managed by a single, persistent dictionary (`Context.global_bindings[0]`)[cite: 1]. `[[...]]` targets this scope[cite: 8].
+    * **Temporary Scopes:**
+        * *Macro/Ref Calls:* Push a temporary *local* frame populated by merging definition defaults and call arguments[cite: 75, 76]. Popped on completion.
+        * *RHS/Default Evaluation:* To isolate side-effects of bindings encountered during these evaluations, temporary scopes are used. A temporary *local* frame is pushed/popped[cite: 64]. A temporary *global* overlay frame is created/discarded, managed via a capped pseudo-stack (`Context.global_bindings` list max size 2, `global_depth` counter). Global bindings (`[[...]]`) encountered during RHS eval modify this temporary global overlay[cite: 8].
+    * **Lookup Order (`get`):** Searches up the local stack (top frame `[-1]` down to root `[0]`), then checks the temporary global overlay (if inside RHS eval), then checks the persistent global frame (`global_bindings[0]`)[cite: 7].
+
+## 3. Syntax and Semantics Summary
+
+* **Text:** Literal text is the default[cite: 262]. Special characters `\`, `~`, `[`, `]`, `{`, `}`, `|`, `` ` `` require escaping with `\` when intended literally[cite: 14].
+* **Document Structure:**
+    * **Block:** Represents a paragraph or major structural element. Blocks are implicitly separated by one or more blank lines (consumed by `Block.sep_regex` [cite: 38]). A block contains one or more Lines[cite: 38].
+    * **Line:** Represents a single line of text ending in a newline character (`\n`)[cite: 39, 131]. A line contains one or more Phrases[cite: 39]. Empty lines (containing no phrases with substance) are skipped[cite: 39].
+    * **Phrase:** Represents segments of a line separated by the pipe character (`|`)[cite: 40, 135]. A line with N `|` separators will contain N+1 phrases (empty phrases are permitted, important for table-like structures)[cite: 40, 45]. The `Context.last_phrase_pos` attribute is used by `Phrase.read` to track the end position of the previously read phrase, preventing infinite loops on trailing empty phrases[cite: 44]. A phrase contains one or more Units[cite: 45].
+    * **Unit:** The smallest syntactic element (e.g., `Text`, `Ref`, `Call`, `Nest`, `LocalBindings`, `Verbatim`)[cite: 81].
+* **Local Binding (`[...]`)**:
+    * Syntax: `[name[D...] = V | ...]` (Separator `|`).
+    * Action: Evaluates `V` immediately -> `value_entity`. Parses `D` -> `defaults_dict`. Creates `Binding(name, value_entity, defaults_dict, is_local=True)`[cite: 60, 66]. Immediately applies binding via `context.set_local(binding)`[cite: 66, 67]. Bindings within a block are applied sequentially.
+    * Scope: Modifies `Context.local_bindings[-1]`[cite: 7].
+* **Global Binding (`[[...]]`)**:
+    * Syntax: `[[name[D...] = V | ...]]` (Separator `|`).
+    * Action: Evaluates `V` immediately -> `value_entity`. Parses `D` -> `defaults_dict`. Creates `Binding(name, value_entity, defaults_dict, is_local=False)`[cite: 60, 66]. Immediately applies binding via `context.set_global(binding)` (targets temporary overlay during RHS eval, else persistent root)[cite: 66, 8]. Bindings within a block are applied sequentially.
+    * Scope: Modifies `Context.global_bindings[-1]`[cite: 8].
+* **Defaults Definition (`name[D...]` on LHS):**
+    * Syntax: `[...]` after name, before `=`, inside a binding block. Contains `key=DefaultValue` pairs separated by `|`. `DefaultValue` evaluated in temporary scope[cite: 62].
+    * Semantics: Defines defaults stored *with the binding* (inside the `Binding` object)[cite: 59]. Nested defaults (`key[d]=val`) disallowed[cite: 156].
+* **Arguments (`\name[A...]` or `~name[A...]`)**:
+    * Syntax: `[...]` immediately following an invocation/reference name. Contains `key=ArgValue` pairs separated by `|`[cite: 68]. `ArgValue` evaluated when parsed.
+    * Semantics: Provides named arguments for a specific call. Stored within the `Call` or `Ref` object[cite: 73, 77]. Merged *after* defaults during call setup[cite: 76]. Named-only, optional-only[cite: 395].
+* **Invocation (`\name[A...]`)**: Immediate lookup, setup of call frame (defaults+args), execution of bound entity's `.call()`[cite: 78].
+* **Reference (`~name[A...]`)**: Creates `Ref(name, A)` object[cite: 74]. Defers lookup and execution until `Ref.call()` is invoked[cite: 75].
+* **Structural Grouping (`{...}`)**: Represents a `Nest` entity containing Blocks[cite: 37].
+* **Verbatim (``` ``...`` ```):** Literal text content[cite: 30].
+
+## 4. Design Rationale Notes
+
+* Transpiler Compatibility: The Python implementation should strive for compatibility with transpilers (e.g., Transcrypt) to enable potential JavaScript versions for use cases like live web previews. This implies favouring simpler, widely supported Python features and avoiding patterns (such as complex multiple inheritance) where simpler alternatives exist, unless strictly necessary for core functionality.
+* **No `@ { ... }` Syntax:** The explicit syntax for anonymous macro definition (`@ { ... }`) was discarded to simplify the surface language for authors. Retex relies on the immediate evaluation of the RHS of bindings (`name=V`) to consistently produce callable `Entity` objects (e.g., `Text`, `Ref`, `Group`). The resulting entity `V` serves as the "macro body". This approach leverages the unified object model and the late-binding reference (`~`) for deferral where needed, aiming for "just write the expression" simplicity.
+* **Defaults Stored with Binding:** Default parameter values (`name[D...]=V`) are associated directly with the *binding name* in the namespace registry (implemented by storing a `Binding` object containing name, value, and defaults). This ensures that if the same value entity (`V`) is bound to multiple names (`m1`, `m2`) with different defaults, each name retains its unique defaults, matching the author's intuitive expectation and avoiding silent modification of shared definitions.
+
+## 5. Read-aheads
+
+For authoring simplicity it is possible to write as follows:
+
+`\h Chapter 1 – The Beginning`
+
+This construct will read the text "Chapter 1 – The Beginning" and use that as a content argument for macro `h`. The macro must also be callable with explicit arguments, having the same effect:
+
+`\h[content=Chapter 1 – The Beginning]`
+
+By defining a macro with a default parameter `content=~phrase`, which can be overridden by an explicit argument, both syntaxes are supported:
+
+`[[ h[content=~phrase] = <h1>~content</h1>]]`
+
+Here `phrase` is a macro that reads a single phrase from the current input position.
